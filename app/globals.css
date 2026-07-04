@@ -1,0 +1,86 @@
+@import "tailwindcss";
+
+@theme {
+  /* Colors — design.md tokens */
+  --color-brand-pink: #ff7aac;
+  --color-ink: #121117;
+  --color-mist: #f4f4f8;
+  --color-smoke: #dcdce5;
+  --color-pewter: #6a697c;
+  --color-graphite: #4d4c5c;
+  --color-signal-yellow: #ffdf3d;
+  --color-sky-pop: #99c5ff;
+
+  /* Typography */
+  --font-display: var(--font-poppins), ui-sans-serif, system-ui, sans-serif;
+  --font-body: var(--font-figtree), ui-sans-serif, system-ui, sans-serif;
+
+  /* Radii — 4px and 8px are the only corners in the system */
+  --radius-btn: 4px;
+  --radius-card: 8px;
+
+  /* Motion */
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-body);
+  color: var(--color-ink);
+  background: #ffffff;
+}
+
+/* Scroll-reveal (driven by the Reveal client component) */
+.reveal {
+  opacity: 0;
+  transform: translateY(24px);
+  transition:
+    opacity 0.7s var(--ease-out-soft),
+    transform 0.7s var(--ease-out-soft);
+  will-change: opacity, transform;
+}
+
+.reveal-visible {
+  opacity: 1;
+  transform: none;
+}
+
+/* Hero entrance */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.animate-rise {
+  animation: rise 0.8s var(--ease-out-soft) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .reveal,
+  .animate-rise {
+    opacity: 1;
+    transform: none;
+    animation: none;
+    transition: none;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
