@@ -64,6 +64,39 @@ body {
   animation: rise 0.9s var(--ease-out-soft) both;
 }
 
+/* Slow organic morph for the hero blob */
+@keyframes blob-morph {
+  0%,
+  100% {
+    border-radius: 46% 54% 57% 43% / 47% 42% 58% 53%;
+  }
+  33% {
+    border-radius: 55% 45% 44% 56% / 52% 56% 44% 48%;
+  }
+  66% {
+    border-radius: 44% 56% 52% 48% / 55% 45% 55% 45%;
+  }
+}
+
+.animate-blob {
+  animation: blob-morph 14s ease-in-out infinite;
+}
+
+/* Gentle float for the hero kids */
+@keyframes floaty {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-12px);
+  }
+}
+
+.animate-floaty {
+  animation: floaty 6s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
