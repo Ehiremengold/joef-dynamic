@@ -24,8 +24,8 @@ const columns = [
         href: "https://maps.google.com/?q=Joef+Dynamic+College,+78+Norman+Williams+St,+Ikoyi,+Lagos",
       },
       {
-        label: "65, Eleshin St, Ikoyi, Lagos",
-        href: "https://maps.google.com/?q=Joef+Dynamic+College,+65+Eleshin+St,+Ikoyi,+Lagos",
+        label: "65, Moshalashi St, Ikoyi, Lagos",
+        href: "https://maps.google.com/?q=Joef+Dynamic+College,+65+Moshalashi+St,+Ikoyi,+Lagos",
       },
     ],
   },

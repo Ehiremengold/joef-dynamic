@@ -54,8 +54,8 @@ export default function Gallery() {
       <div className="mx-auto max-w-[1200px] px-6 py-24 md:py-32">
         <div className="mx-auto max-w-[640px] text-center">
           <WordReveal
-            text="Life at Joef Dynamic."
-            className="font-display text-4xl font-bold leading-[1.08] tracking-[-0.015em] text-brand-navy md:text-5xl"
+            text="Life at Joef Dynamic Schools."
+            className="font-display text-4xl font-bold leading-[1.08] tracking-[-0.015em] text-brand-navy md:text-5xl lg:text-nowrap"
           />
           <Reveal delay={180}>
             <p className="mt-5 text-[17px] leading-relaxed text-mid-gray">

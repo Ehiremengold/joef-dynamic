@@ -11,11 +11,12 @@ const details = [
   },
   {
     label: "Campus 2",
-    value: "65, Eleshin Street, Ikoyi, Lagos",
-    href: "https://maps.google.com/?q=Joef+Dynamic+College,+65+Eleshin+St,+Ikoyi,+Lagos",
+    value: "65, Moshalashi Street, Ikoyi, Lagos",
+    href: "https://maps.google.com/?q=Joef+Dynamic+College,+65+Moshalashi+St,+Ikoyi,+Lagos",
   },
   { label: "Phone", value: "0803 403 5705", href: "tel:+2348034035705" },
   { label: "Phone", value: "0812 636 9992", href: "tel:+2348126369992" },
+    { label: "Phone", value: "0803 531 7472", href: "tel:+2348035317472" },
   {
     label: "Email",
     value: "info@joefdynamicschools.com",
