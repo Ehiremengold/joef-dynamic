@@ -51,7 +51,7 @@ export default function Visit() {
             <Reveal delay={160}>
             <p className="mt-6 text-[17px] leading-relaxed text-graphite">
               No website can show you a school&rsquo;s atmosphere. Walk our
-              halls, meet the teachers, watch a class — then decide. Tours run
+              halls, meet the teachers, watch a class, then decide. Tours run
               every weekday, at both of our Ikoyi campuses.
             </p>
 

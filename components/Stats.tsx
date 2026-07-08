@@ -2,7 +2,7 @@ import Reveal from "./Reveal";
 
 const stats = [
   { value: "K–SS3", label: "Every stage, one school" },
-  { value: "2", label: "Curricula — British & Nigerian, blended" },
+  { value: "2", label: "Curriculum. British & Nigerian, blended" },
   { value: "1:15", label: "Teacher-to-student ratio" },
   { value: "8am", label: "Doors open, Mon–Fri" },
 ];

@@ -10,7 +10,7 @@ const highlights = [
   },
   {
     title: "Coding & robotics expertise",
-    text: "Not a once-a-term novelty — real programming and robotics taught by specialists, from primary through senior college.",
+    text: "Not a once-a-term novelty, real programming and robotics taught by specialists, from primary through senior college.",
   },
   {
     title: "Computer-based teaching",
@@ -18,7 +18,7 @@ const highlights = [
   },
   {
     title: "Music, sport & the arts",
-    text: "Music lessons, sporting activities and creative arts on the timetable for every child — because confidence is built outside the classroom too.",
+    text: "Music lessons, sporting activities and creative arts on the timetable for every child, because confidence is built outside the classroom too.",
   },
 ];
 
@@ -36,7 +36,7 @@ export default function Programs() {
             <p className="mt-6 text-[17px] leading-relaxed text-graphite">
               Most schools make you choose: international polish or national
               exam readiness. Joef Dynamic blends the British and Nigerian
-              curricula so your child gets both — global thinking, local
+              curricula so your child gets both global thinking & local
               excellence.
             </p>
             <a

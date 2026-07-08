@@ -51,7 +51,7 @@ export default function Hero() {
             className="mt-6 max-w-[480px] text-lg leading-relaxed text-graphite"
           >
             School is meant to be loved, not endured. A blended British and
-            Nigerian education in Ikoyi — where every child is known by name
+            Nigerian education in Ikoyi, where every child is known by name
             and prepared for tomorrow with coding, robotics and music.
           </motion.p>
 

@@ -5,7 +5,7 @@ const worries = [
   {
     question: "Will my child be more than a number?",
     answer:
-      "With one teacher to every fifteen students, every child here is known by name — their strengths, their struggles, their spark. Termly reviews keep you in the picture.",
+      "With one teacher to every fifteen students, every child here is known by name, their strengths, their struggles, their spark. Termly reviews keep you in the picture.",
   },
   {
     question: "Will they be safe every day?",
@@ -15,7 +15,7 @@ const worries = [
   {
     question: "Will they be ready for a digital future?",
     answer:
-      "Computer-based teaching runs through every class, and coding & robotics are on the timetable — not an afterthought. Your child graduates fluent in the tools of tomorrow.",
+      "Computer-based teaching runs through every class, and coding & robotics are on the timetable, not an afterthought. Your child graduates fluent in the tools of tomorrow.",
   },
   {
     question: "Will they grow up grounded?",

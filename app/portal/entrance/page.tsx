@@ -191,9 +191,9 @@ export default function EntrancePage() {
               <h2 className="mt-4 font-display text-2xl font-bold tracking-tight">
                 Well done, {result.studentName}!
               </h2>
-              <p className="mt-6 font-display text-5xl font-bold tracking-tight text-brand-navy">
+              {/* <p className="mt-6 font-display text-5xl font-bold tracking-tight text-brand-navy">
                 {result.score}/{result.total}
-              </p>
+              </p> */}
               <p className="mt-2 text-sm text-graphite">
                 {result.examTitle} · Candidate no. {candidateNo}
               </p>

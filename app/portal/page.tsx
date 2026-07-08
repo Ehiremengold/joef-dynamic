@@ -4,7 +4,7 @@ import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 
 export const metadata: Metadata = {
-  title: "Portal — Joef Dynamic College",
+  title: "Portal | Joef Dynamic College",
   description:
     "Take the common entrance test, sit class CBT tests, check results, or manage exams as staff.",
 };
@@ -53,7 +53,7 @@ export default function PortalHome() {
               Tests and results, all in one place
             </h1>
             <p className="mt-4 max-w-[560px] text-lg text-white/85">
-              Choose where you need to go — entrance candidates, current
+              Choose where you need to go, entrance candidates, current
               students, and staff each have their own area.
             </p>
           </div>

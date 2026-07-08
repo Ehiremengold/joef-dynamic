@@ -15,7 +15,7 @@ const stages = [
   {
     name: "Junior College",
     ages: "JSS 1–3",
-    text: "The blended British and Nigerian curricula in full stride — academics, clubs and character, structured for BECE success.",
+    text: "The blended British and Nigerian curricula in full stride; academics, clubs and character, structured for BECE success.",
   },
   {
     name: "Senior College",
@@ -36,7 +36,7 @@ export default function Stages() {
           <Reveal delay={180}>
             <p className="mt-5 text-[17px] leading-relaxed text-mid-gray">
               From a child&rsquo;s first day of kindergarten to their final
-              WASSCE paper, they grow inside one community that knows them —
+              WASSCE paper, they grow inside one community that knows them,
               no stressful school changes, no starting over.
             </p>
           </Reveal>

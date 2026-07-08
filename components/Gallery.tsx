@@ -59,7 +59,7 @@ export default function Gallery() {
           />
           <Reveal delay={180}>
             <p className="mt-5 text-[17px] leading-relaxed text-mid-gray">
-              Excursions, award nights, sports days and career days — moments
+              Excursions, award nights, sports days and career days, moments
               from our students&rsquo; week, straight from our school
               community.
             </p>

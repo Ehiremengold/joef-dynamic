@@ -35,7 +35,7 @@ export default function About() {
             <Reveal delay={180}>
               <p className="mt-6 text-[17px] leading-relaxed text-graphite">
                 Joef Dynamic was built on a simple belief: the school years
-                decide how a child feels about learning — and who they become —
+                decide how a child feels about learning and who they become
                 for the rest of their life. Our classrooms are small enough for
                 every student to be known, and structured enough for every
                 student to be stretched.

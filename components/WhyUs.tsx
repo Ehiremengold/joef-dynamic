@@ -4,14 +4,14 @@ import WordReveal from "./fx/WordReveal";
 const features = [
   {
     title: "Competent, qualified teachers",
-    text: "Every educator is vetted, certified and continually trained — and invested in your child by name.",
+    text: "Every educator is vetted, certified and continually trained and invested in your child by name.",
     icon: (
       <path d="M16 4l12 6-12 6L4 10l12-6zM8 13v7c0 2 4 4 8 4s8-2 8-4v-7M28 10v8" />
     ),
   },
   {
     title: "Serene learning environment",
-    text: "A calm, gated campus on a quiet Ikoyi street — space to think, play and grow safely.",
+    text: "A calm, gated campus on a quiet Ikoyi street space to think, play and grow safely.",
     icon: (
       <path d="M16 3l11 4v8c0 7-4.5 12-11 14C9.5 27 5 22 5 15V7l11-4zM11 16l3.5 3.5L21 13" />
     ),
@@ -28,7 +28,7 @@ const features = [
   },
   {
     title: "Music lessons",
-    text: "Instruments, rhythm and performance for every age — confidence you can hear.",
+    text: "Instruments, rhythm and performance for every age, confidence you can hear.",
     icon: (
       <path d="M12 25a4 4 0 1 1-4-4c1.5 0 3 .7 4 1.8V6l16-3v17a4 4 0 1 1-4-4c1.5 0 3 .7 4 1.8" />
     ),
