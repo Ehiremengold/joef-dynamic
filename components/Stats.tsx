@@ -1,20 +1,22 @@
-﻿import Reveal from "./Reveal";
+import Reveal from "./Reveal";
 
 const stats = [
-  { value: "10–15", label: "Ages we teach" },
+  { value: "K–SS3", label: "Every stage, one school" },
+  { value: "2", label: "Curricula — British & Nigerian, blended" },
   { value: "1:15", label: "Teacher-to-student ratio" },
-  { value: "15+", label: "Subjects & clubs" },
   { value: "8am", label: "Doors open, Mon–Fri" },
 ];
 
 export default function Stats() {
   return (
-    <section className="border-b border-smoke bg-white">
-      <div className="mx-auto grid max-w-[1200px] grid-cols-2 gap-8 px-4 py-12 md:grid-cols-4">
+    <section className="bg-canvas">
+      <div className="mx-auto grid max-w-[1200px] grid-cols-2 gap-10 px-6 py-16 md:grid-cols-4 md:py-20">
         {stats.map((s, i) => (
-          <Reveal key={s.label} delay={i * 80} className="text-center md:text-left">
-            <p className="font-display text-3xl font-extrabold tracking-tight">{s.value}</p>
-            <p className="mt-1 text-[13px] text-graphite">{s.label}</p>
+          <Reveal key={s.label} delay={i * 90} className="text-center">
+            <p className="font-display text-4xl font-bold tracking-tight text-brand-navy">
+              {s.value}
+            </p>
+            <p className="mx-auto mt-2 max-w-[180px] text-sm text-mid-gray">{s.label}</p>
           </Reveal>
         ))}
       </div>

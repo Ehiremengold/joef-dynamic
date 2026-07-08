@@ -3,3 +3,15 @@ node_modules
 out
 *.tsbuildinfo
 next-env.d.ts
+
+# Secrets — never commit. Use .env.local.example as the template.
+.env
+.env.local
+.env*.local
+
+# Legacy JSON store (replaced by Supabase)
+data/db.json
+
+# Supabase CLI local files
+supabase/.branches
+supabase/.temp
