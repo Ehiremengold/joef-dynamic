@@ -51,7 +51,7 @@ export default function ExamsPanel({
       <EntranceAccess onUnauthorized={onUnauthorized} />
       <div className="grid gap-8 lg:grid-cols-[380px_1fr]">
         <CreateExam authFetch={authFetch} onCreated={reload} />
-      <div>
+      <div className="min-w-0">
         <h2 className="font-display text-xl font-bold tracking-tight">All exams</h2>
         {error && <p className="mt-3 text-sm font-semibold text-brand-red">{error}</p>}
         {loading ? (

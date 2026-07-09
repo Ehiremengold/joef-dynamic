@@ -63,13 +63,15 @@ export default function RosterPanel({
     <div className="grid gap-8 lg:grid-cols-[380px_1fr]">
       <AddStudent onAdded={load} onUnauthorized={onUnauthorized} onPin={setNotice} />
 
-      <div>
+      {/* min-w-0 lets the table's overflow-x-auto actually scroll instead of
+          stretching the grid column past the viewport on mobile. */}
+      <div className="min-w-0">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="font-display text-xl font-bold tracking-tight">Student roster</h2>
         </div>
 
         {notice && (
-          <div className="mt-3 flex items-center justify-between gap-3 rounded-card border border-brand-green bg-brand-green/10 px-4 py-3">
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-card border border-brand-green bg-brand-green/10 px-4 py-3">
             <p className="text-sm font-semibold text-ink">
               {notice.text}{" "}
               {notice.pin && <span className="font-display text-lg text-brand-green">{notice.pin}</span>}

@@ -42,7 +42,9 @@ export default function TeamPanel({
     <div className="grid gap-8 lg:grid-cols-[380px_1fr]">
       <AddStaff onAdded={load} onUnauthorized={onUnauthorized} />
 
-      <div>
+      {/* min-w-0 lets the table's overflow-x-auto actually scroll instead of
+          stretching the grid column past the viewport on mobile. */}
+      <div className="min-w-0">
         <h2 className="font-display text-xl font-bold tracking-tight">Staff accounts</h2>
         <div className="mt-4 overflow-x-auto rounded-card border border-smoke bg-white">
           {loading ? (
