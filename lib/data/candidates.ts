@@ -37,3 +37,19 @@ export async function registerCandidate(input: {
   if (error) throw new Error(error.message);
   return mapCandidate(data);
 }
+
+/** Batch lookup, used to attach candidate numbers to a list of attempts. */
+export async function getCandidatesByIds(ids: string[]): Promise<Candidate[]> {
+  if (ids.length === 0) return [];
+  const { data } = await serviceClient().from("candidates").select("*").in("id", ids);
+  return (data ?? []).map(mapCandidate);
+}
+
+export async function getCandidateById(id: string): Promise<Candidate | null> {
+  const { data } = await serviceClient()
+    .from("candidates")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  return data ? mapCandidate(data) : null;
+}

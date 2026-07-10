@@ -256,6 +256,14 @@ function ExamCard({
         >
           {open ? "Close" : "Questions"}
         </button>
+        <a
+          href={`/api/exams/${exam.id}/results-pdf`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="cursor-pointer rounded-btn border border-brand-navy px-3 py-1.5 text-sm font-semibold text-brand-navy transition-colors duration-200 hover:bg-brand-navy hover:text-white"
+        >
+          Download results
+        </a>
         <button
           type="button"
           onClick={remove}

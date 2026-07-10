@@ -117,6 +117,7 @@ export default function ResultsPanel({
                 <th className="px-4 py-3 font-semibold">Year</th>
                 <th className="px-4 py-3 font-semibold">Score</th>
                 <th className="px-4 py-3 font-semibold">Date</th>
+                <th className="px-4 py-3 font-semibold">Download</th>
               </tr>
             </thead>
             <tbody>
@@ -137,6 +138,28 @@ export default function ResultsPanel({
                   </td>
                   <td className="px-4 py-3 text-graphite">
                     {new Date(a.submittedAt).toLocaleString()}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap gap-3">
+                      <a
+                        href={`/api/attempts/${a.id}/pdf`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="cursor-pointer text-[13px] font-semibold text-brand-navy hover:underline"
+                      >
+                        Slip
+                      </a>
+                      {a.takerType === "student" && a.studentId && (
+                        <a
+                          href={`/api/students/${a.studentId}/transcript`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="cursor-pointer text-[13px] font-semibold text-brand-red hover:underline"
+                        >
+                          Transcript
+                        </a>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

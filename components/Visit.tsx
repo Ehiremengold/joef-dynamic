@@ -14,9 +14,14 @@ const details = [
     value: "65, Moshalashi Street, Ikoyi, Lagos",
     href: "https://maps.google.com/?q=Joef+Dynamic+College,+65+Moshalashi+St,+Ikoyi,+Lagos",
   },
+  {
+    label: "Campus 3",
+    value: "40, Moshalashi Street, Ikoyi, Lagos",
+    href: "https://maps.google.com/?q=Joef+Dynamic+College,+40+Moshalashi+St,+Ikoyi,+Lagos",
+  },
   { label: "Phone", value: "0803 403 5705", href: "tel:+2348034035705" },
   { label: "Phone", value: "0812 636 9992", href: "tel:+2348126369992" },
-    { label: "Phone", value: "0803 531 7472", href: "tel:+2348035317472" },
+  { label: "Phone", value: "0803 531 7472", href: "tel:+2348035317472" },
   {
     label: "Email",
     value: "info@joefdynamicschools.com",
@@ -30,7 +35,11 @@ export default function Visit() {
     <section id="visit" className="bg-paper">
       <div className="mx-auto max-w-[1200px] px-6 py-24 md:py-32">
         <div className="grid items-center gap-14 md:grid-cols-2">
-          <Reveal delay={120} from="left" className="order-2 mx-auto w-full max-w-[560px] md:order-1">
+          <Reveal
+            delay={120}
+            from="left"
+            className="order-2 mx-auto w-full max-w-[560px] md:order-1"
+          >
             <Parallax amount={28}>
               <div className="relative aspect-[4/3] overflow-hidden rounded-card">
                 <Image
@@ -50,43 +59,43 @@ export default function Visit() {
               className="font-display text-4xl font-bold leading-[1.08] tracking-[-0.015em] text-brand-navy md:text-5xl"
             />
             <Reveal delay={160}>
-            <p className="mt-6 text-[17px] leading-relaxed text-graphite">
-              No website can show you a school&rsquo;s atmosphere. Walk our
-              halls, meet the teachers, watch a class, then decide. Tours run
-              every weekday, at both of our Ikoyi campuses.
-            </p>
+              <p className="mt-6 text-[17px] leading-relaxed text-graphite">
+                No website can show you a school&rsquo;s atmosphere. Walk our
+                halls, meet the teachers, watch a class, then decide. Tours run
+                every weekday, at both of our Ikoyi campuses.
+              </p>
 
-            <dl className="mt-10 space-y-4">
-              {details.map((d, i) => (
-                <div key={`${d.label}-${i}`} className="flex gap-6">
-                  <dt className="w-16 shrink-0 text-[13px] font-medium uppercase tracking-wide text-pewter">
-                    {d.label}
-                  </dt>
-                  <dd className="text-[15px] font-medium text-ink">
-                    {d.href ? (
-                      <a
-                        href={d.href}
-                        className="transition-colors duration-200 hover:text-brand-red"
-                        {...(d.href.startsWith("http")
-                          ? { target: "_blank", rel: "noopener noreferrer" }
-                          : {})}
-                      >
-                        {d.value}
-                      </a>
-                    ) : (
-                      d.value
-                    )}
-                  </dd>
-                </div>
-              ))}
-            </dl>
+              <dl className="mt-10 space-y-4">
+                {details.map((d, i) => (
+                  <div key={`${d.label}-${i}`} className="flex gap-6">
+                    <dt className="w-16 shrink-0 text-[13px] font-medium uppercase tracking-wide text-pewter lg:text-nowrap">
+                      {d.label}
+                    </dt>
+                    <dd className="text-[15px] font-medium text-ink">
+                      {d.href ? (
+                        <a
+                          href={d.href}
+                          className="transition-colors duration-200 hover:text-brand-red"
+                          {...(d.href.startsWith("http")
+                            ? { target: "_blank", rel: "noopener noreferrer" }
+                            : {})}
+                        >
+                          {d.value}
+                        </a>
+                      ) : (
+                        d.value
+                      )}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
 
-            <a
-              href="tel:+2348034035705"
-              className="mt-10 inline-block rounded-full bg-brand-red px-7 py-3.5 text-[17px] font-medium text-white transition-colors duration-200 hover:bg-brand-red-dark"
-            >
-              Call to book a tour
-            </a>
+              <a
+                href="tel:+2348034035705"
+                className="mt-10 inline-block rounded-full bg-brand-red px-7 py-3.5 text-[17px] font-medium text-white transition-colors duration-200 hover:bg-brand-red-dark"
+              >
+                Call to book a tour
+              </a>
             </Reveal>
           </div>
         </div>

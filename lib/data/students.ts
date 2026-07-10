@@ -76,6 +76,22 @@ export async function resetStudentPin(id: string): Promise<string> {
   return pin;
 }
 
+/** Batch lookup, used to attach admission numbers to a list of attempts. */
+export async function getStudentsByIds(ids: string[]): Promise<Student[]> {
+  if (ids.length === 0) return [];
+  const { data } = await serviceClient().from("students").select("*").in("id", ids);
+  return (data ?? []).map(mapStudent);
+}
+
+export async function getStudentById(id: string): Promise<Student | null> {
+  const { data } = await serviceClient()
+    .from("students")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  return data ? mapStudent(data) : null;
+}
+
 export async function setStudentActive(id: string, active: boolean): Promise<void> {
   const { error } = await serviceClient()
     .from("students")

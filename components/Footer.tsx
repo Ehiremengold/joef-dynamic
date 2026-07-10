@@ -18,7 +18,11 @@ const columns = [
     links: [
       { label: "0803 403 5705", href: "tel:+2348034035705" },
       { label: "0812 636 9992", href: "tel:+2348126369992" },
-      { label: "info@joefdynamicschools.com", href: "mailto:info@joefdynamicschools.com" },
+      { label: "0803 531 7472", href: "tel:+2348035317472" },
+      {
+        label: "info@joefdynamicschools.com",
+        href: "mailto:info@joefdynamicschools.com",
+      },
       {
         label: "78, Norman Williams St, Ikoyi, Lagos",
         href: "https://maps.google.com/?q=Joef+Dynamic+College,+78+Norman+Williams+St,+Ikoyi,+Lagos",
@@ -26,6 +30,10 @@ const columns = [
       {
         label: "65, Moshalashi St, Ikoyi, Lagos",
         href: "https://maps.google.com/?q=Joef+Dynamic+College,+65+Moshalashi+St,+Ikoyi,+Lagos",
+      },
+      {
+        label: "40, Moshalashi St, Ikoyi, Lagos",
+        href: "https://maps.google.com/?q=Joef+Dynamic+College,+40+Moshalashi+St,+Ikoyi,+Lagos",
       },
     ],
   },
@@ -76,7 +84,13 @@ export default function Footer() {
                   aria-label={s.label}
                   className="rounded-full border border-white/25 p-2.5 text-white/80 transition-colors duration-200 hover:border-white hover:text-white"
                 >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                    aria-hidden="true"
+                  >
                     <path d={s.path} />
                   </svg>
                 </a>
@@ -108,8 +122,8 @@ export default function Footer() {
         </div>
         <div className="mt-12 border-t border-white/15 pt-6 text-sm text-white/60">
           <p>
-            © {new Date().getFullYear()} Joef Dynamic College. Motto: The
-            Solid Foundation. All rights reserved.
+            © {new Date().getFullYear()} Joef Dynamic College. Motto: The Solid
+            Foundation. All rights reserved.
           </p>
         </div>
       </div>

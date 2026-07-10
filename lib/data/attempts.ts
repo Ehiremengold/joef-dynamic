@@ -70,6 +70,7 @@ export async function insertAttempt(input: {
 
 export type AttemptFilter = {
   studentId?: string; // scope to one student (their own results)
+  examId?: string; // scope to one exam (class mark sheet)
   name?: string; // staff free-text search
   className?: string;
   year?: string;
@@ -83,6 +84,7 @@ export async function listAttempts(filter: AttemptFilter): Promise<Attempt[]> {
     .order("submitted_at", { ascending: false });
 
   if (filter.studentId) q = q.eq("student_id", filter.studentId);
+  if (filter.examId) q = q.eq("exam_id", filter.examId);
   if (filter.name) q = q.ilike("taker_name", `%${filter.name}%`);
   if (filter.className) q = q.eq("class_name", filter.className);
   if (filter.year) q = q.eq("year", filter.year);
@@ -90,4 +92,13 @@ export async function listAttempts(filter: AttemptFilter): Promise<Attempt[]> {
 
   const { data } = await q;
   return (data ?? []).map(mapAttempt);
+}
+
+export async function getAttemptById(id: string): Promise<Attempt | null> {
+  const { data } = await serviceClient()
+    .from("attempts")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  return data ? mapAttempt(data) : null;
 }
