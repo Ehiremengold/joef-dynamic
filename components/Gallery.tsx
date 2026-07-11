@@ -12,9 +12,9 @@ const photos = [
     caption: "Early years",
   },
   {
-    src: "/images/gallery/sports-day.jpg",
-    alt: "Two students smiling in their sports day outfits",
-    caption: "Sports day",
+    src: "/images/gallery/first-lady-meeting.jpg",
+    alt: "Students meeting the First lady of Lagos State",
+    caption: "Meeting with the First lady of Lagos State",
   },
   {
     src: "/images/gallery/career-day.jpg",
