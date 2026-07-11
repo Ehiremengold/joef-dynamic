@@ -6,6 +6,7 @@ import Stages from "@/components/Stages";
 import Programs from "@/components/Programs";
 import Gallery from "@/components/Gallery";
 import About from "@/components/About";
+import Proprietors from "@/components/Proprietors";
 import WhyUs from "@/components/WhyUs";
 import Partners from "@/components/Partners";
 import Visit from "@/components/Visit";
@@ -24,6 +25,7 @@ export default function Home() {
         <Programs />
         <Gallery />
         <About />
+        <Proprietors />
         <WhyUs />
         <Partners />
         <Visit />

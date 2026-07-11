@@ -82,6 +82,22 @@ body {
   animation: blob-morph 14s ease-in-out infinite;
 }
 
+/* Endless horizontal drift for the hero media strip.
+   Track holds two identical copies, so -50% loops seamlessly. */
+@keyframes hero-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-hero-marquee {
+  animation: hero-marquee 65s linear infinite;
+  will-change: transform;
+}
+
 /* Gentle float for the hero kids */
 @keyframes floaty {
   0%,
