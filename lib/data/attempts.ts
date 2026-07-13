@@ -94,6 +94,16 @@ export async function listAttempts(filter: AttemptFilter): Promise<Attempt[]> {
   return (data ?? []).map(mapAttempt);
 }
 
+/**
+ * Staff only. Wipes a finished attempt so the taker may sit the exam again —
+ * the recorded score is gone for good. Used when a sitting was lost to an
+ * outage and the student needs a clean run at it.
+ */
+export async function deleteAttempt(id: string): Promise<void> {
+  const { error } = await serviceClient().from("attempts").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
 export async function getAttemptById(id: string): Promise<Attempt | null> {
   const { data } = await serviceClient()
     .from("attempts")

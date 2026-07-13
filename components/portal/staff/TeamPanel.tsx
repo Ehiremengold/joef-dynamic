@@ -12,6 +12,8 @@ export default function TeamPanel({
 }) {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState("");
+  const [error, setError] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -29,13 +31,36 @@ export default function TeamPanel({
     load();
   }, [load]);
 
-  async function toggleActive(s: Staff) {
-    const res = await fetch("/api/staff", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: s.id, active: !s.active }),
-    });
-    if (res.ok) load();
+  /** Partial update — send only what changed, so nothing else gets clobbered. */
+  async function patch(s: Staff, body: Record<string, unknown>) {
+    setBusyId(s.id);
+    setError("");
+    try {
+      const res = await fetch("/api/staff", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: s.id, ...body }),
+      });
+      if (res.status === 401 || res.status === 403) return onUnauthorized();
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Could not update that account");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not update that account");
+    } finally {
+      setBusyId("");
+    }
+  }
+
+  function changeRole(s: Staff, role: Staff["role"]) {
+    if (role === s.role) return;
+    const ok = window.confirm(
+      role === "admin"
+        ? `Make ${s.fullName} an administrator? They will be able to manage staff, students and exams.`
+        : `Remove ${s.fullName}'s admin rights and make them a teacher?`
+    );
+    if (!ok) return;
+    patch(s, { role });
   }
 
   return (
@@ -46,6 +71,11 @@ export default function TeamPanel({
           stretching the grid column past the viewport on mobile. */}
       <div className="min-w-0">
         <h2 className="font-display text-xl font-bold tracking-tight">Staff accounts</h2>
+        {error && (
+          <p className="mt-3 text-sm font-semibold text-brand-red" role="alert">
+            {error}
+          </p>
+        )}
         <div className="mt-4 overflow-x-auto rounded-card border border-smoke bg-white">
           {loading ? (
             <p className="p-6 text-sm text-graphite">Loading…</p>
@@ -71,13 +101,26 @@ export default function TeamPanel({
                       </td>
                       <td className="px-4 py-3">{s.email}</td>
                       <td className="px-4 py-3">
-                        <span
-                          className={`rounded-btn px-2 py-0.5 text-xs font-bold uppercase ${
-                            s.role === "admin" ? "bg-brand-gold text-ink" : "bg-mist text-graphite"
-                          }`}
-                        >
-                          {s.role}
-                        </span>
+                        {isSelf ? (
+                          // An admin can't demote themselves — that's a one-way
+                          // trip out of this screen.
+                          <span className="rounded-btn bg-brand-gold px-2 py-0.5 text-xs font-bold uppercase text-ink">
+                            {s.role}
+                          </span>
+                        ) : (
+                          <select
+                            value={s.role}
+                            disabled={busyId === s.id}
+                            onChange={(e) => changeRole(s, e.target.value as Staff["role"])}
+                            aria-label={`Role for ${s.fullName}`}
+                            className={`cursor-pointer rounded-btn border border-smoke px-2 py-1 text-xs font-bold uppercase outline-none focus:border-brand-navy disabled:opacity-50 ${
+                              s.role === "admin" ? "bg-brand-gold text-ink" : "bg-mist text-graphite"
+                            }`}
+                          >
+                            <option value="teacher">Teacher</option>
+                            <option value="admin">Admin</option>
+                          </select>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         {s.active ? (
@@ -92,8 +135,9 @@ export default function TeamPanel({
                         ) : (
                           <button
                             type="button"
-                            onClick={() => toggleActive(s)}
-                            className="cursor-pointer text-[13px] font-semibold text-brand-red hover:underline"
+                            disabled={busyId === s.id}
+                            onClick={() => patch(s, { active: !s.active })}
+                            className="cursor-pointer text-[13px] font-semibold text-brand-red hover:underline disabled:opacity-50"
                           >
                             {s.active ? "Deactivate" : "Reactivate"}
                           </button>

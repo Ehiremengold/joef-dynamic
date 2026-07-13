@@ -66,10 +66,42 @@ export async function createStaff(input: {
   return mapStaff(data);
 }
 
-export async function setStaffActive(id: string, active: boolean): Promise<void> {
-  const { error } = await serviceClient()
+export async function getStaffById(id: string): Promise<Staff | null> {
+  const { data } = await serviceClient()
     .from("staff")
-    .update({ active })
-    .eq("id", id);
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  return data ? mapStaff(data) : null;
+}
+
+/** How many admins can still sign in — the portal must never drop to zero. */
+export async function countActiveAdmins(): Promise<number> {
+  const { count } = await serviceClient()
+    .from("staff")
+    .select("id", { count: "exact", head: true })
+    .eq("role", "admin")
+    .eq("active", true);
+  return count ?? 0;
+}
+
+/** Partial update of a staff profile. Omitted fields are left alone. */
+export async function updateStaff(
+  id: string,
+  patch: { fullName?: string; role?: StaffRole; active?: boolean }
+): Promise<Staff | null> {
+  const row: Row = {};
+  if (patch.fullName !== undefined) row.full_name = patch.fullName;
+  if (patch.role !== undefined) row.role = patch.role;
+  if (patch.active !== undefined) row.active = patch.active;
+  if (Object.keys(row).length === 0) return getStaffById(id);
+
+  const { data, error } = await serviceClient()
+    .from("staff")
+    .update(row)
+    .eq("id", id)
+    .select("*")
+    .maybeSingle();
   if (error) throw new Error(error.message);
+  return data ? mapStaff(data) : null;
 }

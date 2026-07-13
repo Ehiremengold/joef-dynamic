@@ -49,6 +49,25 @@ export type Attempt = {
   submittedAt: string;
 };
 
+/** A sitting that has been started but not yet submitted. */
+export type AttemptSession = {
+  id: string;
+  examId: string;
+  studentId: string | null;
+  candidateId: string | null;
+  takerName: string;
+  answers: (number | null)[];
+  startedAt: string;
+  extraSeconds: number;
+  lastSeenAt: string;
+};
+
+/** What a taker's browser needs to render (or resume) a test. */
+export type SittingState = {
+  answers: (number | null)[];
+  secondsLeft: number;
+};
+
 export type Staff = {
   id: string;
   fullName: string;

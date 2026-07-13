@@ -186,9 +186,10 @@ function ExamCard({
   authFetch: AuthFetch;
   onChanged: () => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [panel, setPanel] = useState<"none" | "questions" | "sittings">("none");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const open = panel === "questions";
 
   async function update(patch: Record<string, unknown>) {
     setBusy(true);
@@ -251,10 +252,17 @@ function ExamCard({
         </label>
         <button
           type="button"
-          onClick={() => setOpen(!open)}
+          onClick={() => setPanel(open ? "none" : "questions")}
           className="cursor-pointer rounded-btn border border-ink px-3 py-1.5 text-sm font-semibold transition-colors duration-200 hover:bg-ink hover:text-white"
         >
           {open ? "Close" : "Questions"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setPanel(panel === "sittings" ? "none" : "sittings")}
+          className="cursor-pointer rounded-btn border border-ink px-3 py-1.5 text-sm font-semibold transition-colors duration-200 hover:bg-ink hover:text-white"
+        >
+          {panel === "sittings" ? "Close" : "Sittings"}
         </button>
         <a
           href={`/api/exams/${exam.id}/results-pdf`}
@@ -277,6 +285,187 @@ function ExamCard({
       {error && <p className="px-5 pb-3 text-sm font-semibold text-brand-red">{error}</p>}
       {open && (
         <QuestionEditor exam={exam} busy={busy} onSave={(questions) => update({ questions })} />
+      )}
+      {panel === "sittings" && <SittingsPanel exam={exam} authFetch={authFetch} />}
+    </div>
+  );
+}
+
+type Sitting = {
+  id: string;
+  takerName: string;
+  answered: number;
+  total: number;
+  secondsLeft: number;
+  extraMins: number;
+  lastSeenAt: string;
+};
+type Submitted = {
+  id: string;
+  takerName: string;
+  score: number;
+  total: number;
+  submittedAt: string;
+};
+
+function mmss(secs: number) {
+  const m = Math.floor(Math.max(0, secs) / 60);
+  const s = Math.max(0, secs) % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+/**
+ * Who is mid-test, and who has finished. The clock never pauses on its own, so
+ * this is where a student who lost time to a power cut or a dead network gets
+ * it back.
+ */
+function SittingsPanel({ exam, authFetch }: { exam: Exam; authFetch: AuthFetch }) {
+  const [inProgress, setInProgress] = useState<Sitting[]>([]);
+  const [submitted, setSubmitted] = useState<Submitted[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState("");
+  const [error, setError] = useState("");
+
+  const reload = useCallback(async () => {
+    try {
+      const d = await (await authFetch(`/api/exams/${exam.id}/sittings`)).json();
+      setInProgress(d.inProgress || []);
+      setSubmitted(d.submitted || []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load sittings");
+    } finally {
+      setLoading(false);
+    }
+  }, [authFetch, exam.id]);
+
+  // Live-ish: a teacher watching a test in progress wants the clocks to move.
+  useEffect(() => {
+    reload();
+    const t = setInterval(reload, 15_000);
+    return () => clearInterval(t);
+  }, [reload]);
+
+  async function grant(sessionId: string, extraMins: number) {
+    setBusyId(sessionId);
+    setError("");
+    try {
+      const res = await authFetch(`/api/exams/${exam.id}/sittings`, {
+        method: "PATCH",
+        body: JSON.stringify({ sessionId, extraMins }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Could not grant extra time");
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not grant extra time");
+    } finally {
+      setBusyId("");
+    }
+  }
+
+  async function allowRetake(attempt: Submitted) {
+    const ok = window.confirm(
+      `Delete ${attempt.takerName}'s score of ${attempt.score}/${attempt.total} so they can sit "${exam.title}" again? This cannot be undone.`
+    );
+    if (!ok) return;
+    setBusyId(attempt.id);
+    setError("");
+    try {
+      const res = await authFetch(
+        `/api/exams/${exam.id}/sittings?attemptId=${attempt.id}`,
+        { method: "DELETE" }
+      );
+      if (!res.ok) throw new Error("Could not clear that attempt");
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not clear that attempt");
+    } finally {
+      setBusyId("");
+    }
+  }
+
+  return (
+    <div className="border-t border-smoke p-5">
+      {error && <p className="mb-3 text-sm font-semibold text-brand-red">{error}</p>}
+
+      <p className="font-display text-sm font-bold tracking-tight">Taking it now</p>
+      {loading ? (
+        <p className="mt-2 text-sm text-graphite">Loading…</p>
+      ) : inProgress.length === 0 ? (
+        <p className="mt-2 text-sm text-graphite">Nobody is sitting this test right now.</p>
+      ) : (
+        <ul className="mt-2 space-y-2">
+          {inProgress.map((s) => (
+            <li
+              key={s.id}
+              className="flex flex-wrap items-center gap-3 rounded-btn bg-mist px-4 py-3"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold">{s.takerName}</p>
+                <p className="text-[13px] text-graphite">
+                  {s.answered}/{s.total} answered
+                  {s.extraMins > 0 ? ` · +${s.extraMins} min granted` : ""}
+                </p>
+              </div>
+              <span
+                className={`rounded-btn px-2.5 py-1 font-display text-sm font-bold tabular-nums ${
+                  s.secondsLeft === 0 ? "bg-brand-red text-white" : "bg-white text-ink"
+                }`}
+              >
+                {s.secondsLeft === 0 ? "Time up" : mmss(s.secondsLeft)}
+              </span>
+              {[5, 10].map((mins) => (
+                <button
+                  key={mins}
+                  type="button"
+                  disabled={busyId === s.id}
+                  onClick={() => grant(s.id, mins)}
+                  className="cursor-pointer rounded-btn border border-brand-green px-3 py-1.5 text-sm font-semibold text-brand-green transition-colors duration-200 hover:bg-brand-green hover:text-white disabled:opacity-50"
+                >
+                  +{mins} min
+                </button>
+              ))}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <p className="mt-3 text-[13px] leading-relaxed text-pewter">
+        The clock keeps running even if a student closes the tab — their answers
+        are saved as they go, so they can sign back in and carry on. If someone
+        genuinely lost time to a power cut or a network drop, hand it back here.
+      </p>
+
+      {submitted.length > 0 && (
+        <>
+          <p className="mt-6 font-display text-sm font-bold tracking-tight">Finished</p>
+          <ul className="mt-2 space-y-2">
+            {submitted.map((a) => (
+              <li
+                key={a.id}
+                className="flex flex-wrap items-center gap-3 rounded-btn bg-mist px-4 py-3"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold">{a.takerName}</p>
+                  <p className="text-[13px] text-graphite">
+                    {new Date(a.submittedAt).toLocaleString()}
+                  </p>
+                </div>
+                <span className="font-display text-sm font-bold tabular-nums">
+                  {a.score}/{a.total}
+                </span>
+                <button
+                  type="button"
+                  disabled={busyId === a.id}
+                  onClick={() => allowRetake(a)}
+                  className="cursor-pointer rounded-btn border border-brand-red px-3 py-1.5 text-sm font-semibold text-brand-red transition-colors duration-200 hover:bg-brand-red hover:text-white disabled:opacity-50"
+                >
+                  Allow retake
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
     </div>
   );

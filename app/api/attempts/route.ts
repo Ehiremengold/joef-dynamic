@@ -3,11 +3,9 @@ import { errorResponse } from "@/lib/api";
 import { currentStaff } from "@/lib/auth/staff";
 import { getTakerSession } from "@/lib/auth/session";
 import { getExam, isOpen } from "@/lib/data/exams";
-import {
-  DuplicateAttemptError,
-  insertAttempt,
-  listAttempts,
-} from "@/lib/data/attempts";
+import { DuplicateAttemptError, listAttempts } from "@/lib/data/attempts";
+import { getSession, isExpired } from "@/lib/data/attemptSessions";
+import { canSit, finalizeAttempt, submittedResult } from "@/lib/data/submit";
 import type { ExamType } from "@/lib/types";
 
 /**
@@ -69,51 +67,26 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Exam not available" }, { status: 404 });
     }
 
-    // The taker must be allowed to sit this exam.
-    const allowed =
-      (taker.kind === "candidate" && exam.type === "entrance") ||
-      (taker.kind === "student" &&
-        exam.type === "class" &&
-        exam.className === taker.className);
-    if (!allowed) {
+    if (!canSit(exam, taker)) {
       return NextResponse.json({ error: "Exam not available" }, { status: 403 });
     }
 
-    const answers: (number | null)[] = exam.questions.map((_, i) => {
-      const a = Array.isArray(body.answers) ? body.answers[i] : null;
-      return Number.isInteger(a) ? (a as number) : null;
-    });
-    const score = exam.questions.reduce(
-      (acc, q, i) => acc + (answers[i] === q.correctIndex ? 1 : 0),
-      0
-    );
+    // Past the deadline (plus grace), the answers on the wire are worthless —
+    // only what was autosaved before time ran out counts. Otherwise a taker
+    // could sit on an open tab, take as long as they liked, and submit late.
+    const session = await getSession(exam.id, taker);
+    const answers =
+      session && isExpired(session, exam) ? session.answers : body.answers;
 
     try {
-      const attempt = await insertAttempt({
-        examId: exam.id,
-        examTitle: exam.title,
-        examType: exam.type,
-        takerType: taker.kind,
-        studentId: taker.kind === "student" ? taker.id : null,
-        candidateId: taker.kind === "candidate" ? taker.id : null,
-        takerName: taker.name,
-        className: taker.kind === "student" ? taker.className : null,
-        year: String(new Date().getFullYear()),
+      const attempt = await finalizeAttempt({
+        exam,
+        taker,
         answers,
-        score,
-        total: exam.questions.length,
+        sessionId: session?.id,
       });
       return NextResponse.json(
-        {
-          attempt: {
-            id: attempt.id,
-            examTitle: attempt.examTitle,
-            studentName: attempt.takerName,
-            score: attempt.score,
-            total: attempt.total,
-            submittedAt: attempt.submittedAt,
-          },
-        },
+        { attempt: submittedResult(attempt) },
         { status: 201 }
       );
     } catch (e) {
