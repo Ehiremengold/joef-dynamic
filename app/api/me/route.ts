@@ -9,7 +9,7 @@ export async function GET() {
     if (staff) {
       return NextResponse.json({
         kind: "staff",
-        staff: { fullName: staff.fullName, role: staff.role, email: staff.email },
+        staff: { id: staff.id, fullName: staff.fullName, role: staff.role, email: staff.email },
       });
     }
     const taker = await getTakerSession();

@@ -11,6 +11,7 @@ function mapStudent(r: Row): Student {
     admissionNumber: r.admission_number as string,
     fullName: r.full_name as string,
     className: r.class_name as ClassName,
+    classId: (r.class_id as string | null) ?? null,
     entryYear: r.entry_year as string,
     active: r.active as boolean,
     createdAt: r.created_at as string,
@@ -90,6 +91,36 @@ export async function getStudentById(id: string): Promise<Student | null> {
     .eq("id", id)
     .maybeSingle();
   return data ? mapStudent(data) : null;
+}
+
+/**
+ * Assign a student to a real class (Class Management). Keeps the legacy
+ * class_name in sync from the class's level so exam-eligibility matching,
+ * which still keys off class_name, is unaffected.
+ */
+export async function assignStudentClass(
+  id: string,
+  classId: string,
+  level: ClassName
+): Promise<void> {
+  const { error } = await serviceClient()
+    .from("students")
+    .update({ class_id: classId, class_name: level })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Remove a student's class assignment. Leaves the legacy class_name untouched
+ * (it's NOT NULL and the exam system still reads it) — only the class_id link
+ * to a real Class Management record is cleared.
+ */
+export async function unassignStudentClass(id: string): Promise<void> {
+  const { error } = await serviceClient()
+    .from("students")
+    .update({ class_id: null })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
 }
 
 export async function setStudentActive(id: string, active: boolean): Promise<void> {

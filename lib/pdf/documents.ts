@@ -164,6 +164,8 @@ export type ResultSlipInput = {
   score: number;
   total: number;
   submittedAt: string;
+  /** Cumulative attendance for the student's current term, if recorded. */
+  attendance?: { totalDays: number; daysPresent: number; termLabel: string } | null;
 };
 
 export async function buildResultSlipPdf(input: ResultSlipInput): Promise<Buffer> {
@@ -183,6 +185,17 @@ export async function buildResultSlipPdf(input: ResultSlipInput): Promise<Buffer
     ["Test type", input.examType === "entrance" ? "Common Entrance" : "Class Test"],
     ["Year", input.year],
     ["Submitted", fmtDate(input.submittedAt)],
+    ...(input.attendance
+      ? ([
+          [
+            "Attendance",
+            `${input.attendance.daysPresent}/${input.attendance.totalDays} days (${pct(
+              input.attendance.daysPresent,
+              input.attendance.totalDays
+            )}%) — ${input.attendance.termLabel}`,
+          ],
+        ] as [string, string][])
+      : []),
   ];
 
   const detailWidth = 320;

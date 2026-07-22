@@ -1,9 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CLASSES, type Student } from "@/lib/types";
+import { CLASSES, type Class, type Student, type Subject } from "@/lib/types";
 
 const YEARS = ["2024", "2025", "2026", "2027"];
+
+function classLabel(c: Class): string {
+  return `${c.campusName ?? "Campus"} · ${c.level}${c.arm ? c.arm : ""}`;
+}
 
 export default function RosterPanel({
   onUnauthorized,
@@ -11,10 +15,12 @@ export default function RosterPanel({
   onUnauthorized: () => void;
 }) {
   const [students, setStudents] = useState<Student[]>([]);
+  const [classes, setClasses] = useState<Class[]>([]);
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState("");
   const [classFilter, setClassFilter] = useState("");
   const [notice, setNotice] = useState<{ text: string; pin?: string } | null>(null);
+  const [subjectsFor, setSubjectsFor] = useState<Student | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -35,6 +41,24 @@ export default function RosterPanel({
     const t = setTimeout(load, 300);
     return () => clearTimeout(t);
   }, [load]);
+
+  useEffect(() => {
+    fetch("/api/classes")
+      .then((r) => (r.ok ? r.json() : { classes: [] }))
+      .then((d) => setClasses(d.classes || []))
+      .catch(() => {});
+  }, []);
+
+  /** Assign to a class (classId set) or clear the assignment (classId ""). */
+  async function assignClass(s: Student, classId: string) {
+    const res = await fetch("/api/students", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: s.id, action: "set-class", classId }),
+    });
+    if (res.status === 401) return onUnauthorized();
+    if (res.ok) load();
+  }
 
   async function resetPin(s: Student) {
     if (!window.confirm(`Reset ${s.fullName}'s PIN? Their old PIN stops working.`)) return;
@@ -129,7 +153,19 @@ export default function RosterPanel({
                   <tr key={s.id} className="border-b border-smoke last:border-0">
                     <td className="px-4 py-3 font-mono text-[13px]">{s.admissionNumber}</td>
                     <td className="px-4 py-3 font-semibold">{s.fullName}</td>
-                    <td className="px-4 py-3">{s.className}</td>
+                    <td className="px-4 py-3">
+                      <select
+                        value={s.classId ?? ""}
+                        onChange={(e) => assignClass(s, e.target.value)}
+                        aria-label={`Class for ${s.fullName}`}
+                        className="cursor-pointer rounded-btn border border-smoke bg-white px-2 py-1.5 text-[13px] outline-none focus:border-brand-navy"
+                      >
+                        <option value="">Unassigned · {s.className}</option>
+                        {classes.map((c) => (
+                          <option key={c.id} value={c.id}>{classLabel(c)}</option>
+                        ))}
+                      </select>
+                    </td>
                     <td className="px-4 py-3">{s.entryYear}</td>
                     <td className="px-4 py-3">
                       {s.active ? (
@@ -154,6 +190,15 @@ export default function RosterPanel({
                         >
                           {s.active ? "Deactivate" : "Reactivate"}
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => setSubjectsFor(s)}
+                          disabled={!s.classId}
+                          className="cursor-pointer text-[13px] font-semibold text-brand-navy hover:underline disabled:cursor-not-allowed disabled:opacity-40"
+                          title={s.classId ? undefined : "Assign a class first"}
+                        >
+                          Subjects
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -161,6 +206,135 @@ export default function RosterPanel({
               </tbody>
             </table>
           )}
+        </div>
+      </div>
+
+      {subjectsFor && (
+        <SubjectExemptions
+          student={subjectsFor}
+          onClose={() => setSubjectsFor(null)}
+          onUnauthorized={onUnauthorized}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Lets staff mark which of the student's class subjects they are NOT taking. */
+function SubjectExemptions({
+  student,
+  onClose,
+  onUnauthorized,
+}: {
+  student: Student;
+  onClose: () => void;
+  onUnauthorized: () => void;
+}) {
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [exemptIds, setExemptIds] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function run() {
+      setLoading(true);
+      try {
+        const [subjRes, exRes] = await Promise.all([
+          fetch(`/api/classes/${student.classId}/subjects`),
+          fetch(`/api/students/${student.id}/subject-exemptions`),
+        ]);
+        if (subjRes.status === 401 || exRes.status === 401) return onUnauthorized();
+        const subjData = await subjRes.json();
+        const exData = await exRes.json();
+        if (cancelled) return;
+        setSubjects(
+          (subjData.subjects || []).map((cs: { subjectId: string; subjectName: string }) => ({
+            id: cs.subjectId,
+            name: cs.subjectName,
+          }))
+        );
+        setExemptIds(new Set(exData.subjectIds || []));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [student.classId, student.id, onUnauthorized]);
+
+  function toggle(id: string) {
+    setExemptIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function save() {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/students/${student.id}/subject-exemptions`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subjectIds: Array.from(exemptIds) }),
+      });
+      if (res.status === 401) return onUnauthorized();
+      if (res.ok) onClose();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4">
+      <div className="w-full max-w-[420px] rounded-card border border-smoke bg-white p-6">
+        <h3 className="font-display text-lg font-bold tracking-tight">
+          {student.fullName}&rsquo;s subjects
+        </h3>
+        <p className="mt-1 text-[13px] text-pewter">
+          Untick any subject this student isn&rsquo;t offering, it will be left off their report card.
+        </p>
+
+        <div className="mt-4 max-h-[300px] space-y-2 overflow-y-auto">
+          {loading ? (
+            <p className="text-sm text-graphite">Loading…</p>
+          ) : subjects.length === 0 ? (
+            <p className="text-sm text-graphite">This class has no subjects assigned yet.</p>
+          ) : (
+            subjects.map((subj) => (
+              <label key={subj.id} className="flex cursor-pointer items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={!exemptIds.has(subj.id)}
+                  onChange={() => toggle(subj.id)}
+                  className="cursor-pointer"
+                />
+                {subj.name}
+              </label>
+            ))
+          )}
+        </div>
+
+        <div className="mt-5 flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="cursor-pointer rounded-btn px-4 py-2 text-sm font-semibold text-graphite hover:text-ink"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={save}
+            disabled={saving || loading}
+            className="cursor-pointer rounded-btn bg-brand-red px-4 py-2 text-sm font-semibold text-white hover:bg-brand-red-dark disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {saving ? "Saving…" : "Save"}
+          </button>
         </div>
       </div>
     </div>
@@ -215,7 +389,7 @@ function AddStudent({
       <h2 className="font-display text-xl font-bold tracking-tight">Add student</h2>
       <p className="mt-2 text-[13px] leading-relaxed text-pewter">
         A 6-digit PIN is generated. Give the admission number + PIN to the
-        student — they use it to sign in and take class tests.
+        student, they use it to sign in and take class tests.
       </p>
 
       <label className="mt-5 block text-sm font-semibold" htmlFor="s-adm">Admission number</label>

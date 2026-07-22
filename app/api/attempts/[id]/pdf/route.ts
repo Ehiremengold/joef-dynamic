@@ -4,6 +4,8 @@ import { requireStaff } from "@/lib/auth/staff";
 import { getAttemptById } from "@/lib/data/attempts";
 import { getStudentById } from "@/lib/data/students";
 import { getCandidateById } from "@/lib/data/candidates";
+import { getCurrentTerm } from "@/lib/data/terms";
+import { getStudentAttendanceForTerm } from "@/lib/data/attendance";
 import { buildResultSlipPdf } from "@/lib/pdf/documents";
 import { pdfResponse } from "@/lib/pdf/respond";
 
@@ -21,9 +23,20 @@ export async function GET(req: NextRequest, { params }: Params) {
 
     let admissionNumber: string | null = null;
     let candidateNumber: string | null = null;
+    let attendance: { totalDays: number; daysPresent: number; termLabel: string } | null = null;
     if (attempt.takerType === "student" && attempt.studentId) {
       const student = await getStudentById(attempt.studentId);
       admissionNumber = student?.admissionNumber ?? null;
+
+      if (student?.classId) {
+        const term = await getCurrentTerm();
+        if (term) {
+          const record = await getStudentAttendanceForTerm(student.id, student.classId, term.id);
+          if (record) {
+            attendance = { ...record, termLabel: term.name };
+          }
+        }
+      }
     } else if (attempt.takerType === "candidate" && attempt.candidateId) {
       const candidate = await getCandidateById(attempt.candidateId);
       candidateNumber = candidate?.candidateNumber ?? null;
@@ -40,6 +53,7 @@ export async function GET(req: NextRequest, { params }: Params) {
       score: attempt.score,
       total: attempt.total,
       submittedAt: attempt.submittedAt,
+      attendance,
     });
 
     return pdfResponse(buffer, `Result Slip - ${attempt.takerName} - ${attempt.examTitle}.pdf`);

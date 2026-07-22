@@ -2,11 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { errorResponse } from "@/lib/api";
 import { requireStaff } from "@/lib/auth/staff";
 import {
+  assignStudentClass,
   createStudent,
   listStudents,
   resetStudentPin,
   setStudentActive,
+  unassignStudentClass,
 } from "@/lib/data/students";
+import { getClassById } from "@/lib/data/classes";
 import { CLASSES } from "@/lib/types";
 
 /** GET /api/students — staff list/search the roster. */
@@ -77,6 +80,19 @@ export async function PATCH(req: NextRequest) {
     }
     if (body?.action === "set-active") {
       await setStudentActive(id, Boolean(body.active));
+      return NextResponse.json({ ok: true });
+    }
+    if (body?.action === "set-class") {
+      const classId = String(body?.classId || "");
+      if (!classId) {
+        await unassignStudentClass(id);
+        return NextResponse.json({ ok: true });
+      }
+      const cls = await getClassById(classId);
+      if (!cls) {
+        return NextResponse.json({ error: "Class not found" }, { status: 400 });
+      }
+      await assignStudentClass(id, cls.id, cls.level);
       return NextResponse.json({ ok: true });
     }
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });

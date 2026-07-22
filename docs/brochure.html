@@ -1,0 +1,620 @@
+<title>School Management Platform — Capabilities & Services</title>
+<style>
+  :root {
+    --paper: #ffffff;
+    --band: #f7f6f2;
+    --card: #ffffff;
+    --card-lift: #fbfaf6;
+    --ink: #1d1d1f;
+    --muted: #5b5f74;
+    --faint: #8a8a99;
+    --hairline: #e4e3ea;
+    --line-strong: #cdccd7;
+
+    --navy: #232d5e;
+    --navy-deep: #171e40;
+    --red: #d42027;
+    --red-dark: #a91920;
+    --gold: #eac95e;
+    --gold-deep: #b8922e;
+    --green: #009444;
+    --cream: #faf4e2;
+
+    /* Cover band is a committed dark moment in both themes */
+    --hero-ink: #ffffff;
+    --hero-muted: rgba(255, 255, 255, 0.74);
+    --hero-line: rgba(255, 255, 255, 0.16);
+
+    --display: Georgia, "Iowan Old Style", "Palatino Linotype", "Times New Roman", serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+    --maxw: 800px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #121428;
+      --band: #171a32;
+      --card: #1a1d38;
+      --card-lift: #1f2242;
+      --ink: #ecebf3;
+      --muted: #a6a5bb;
+      --faint: #7f7e95;
+      --hairline: #2a2d4d;
+      --line-strong: #3a3d5f;
+      --navy: #33407c;
+      --navy-deep: #202748;
+      --red: #f0565c;
+      --red-dark: #d8434a;
+      --gold: #edc766;
+      --gold-deep: #d9b24e;
+      --green: #2bb56b;
+      --cream: #f3ead2;
+    }
+  }
+
+  :root[data-theme="light"] {
+    --paper: #ffffff; --band: #f7f6f2; --card: #ffffff; --card-lift: #fbfaf6;
+    --ink: #1d1d1f; --muted: #5b5f74; --faint: #8a8a99; --hairline: #e4e3ea; --line-strong: #cdccd7;
+    --navy: #232d5e; --navy-deep: #171e40; --red: #d42027; --red-dark: #a91920;
+    --gold: #eac95e; --gold-deep: #b8922e; --green: #009444; --cream: #faf4e2;
+  }
+  :root[data-theme="dark"] {
+    --paper: #121428; --band: #171a32; --card: #1a1d38; --card-lift: #1f2242;
+    --ink: #ecebf3; --muted: #a6a5bb; --faint: #7f7e95; --hairline: #2a2d4d; --line-strong: #3a3d5f;
+    --navy: #33407c; --navy-deep: #202748; --red: #f0565c; --red-dark: #d8434a;
+    --gold: #edc766; --gold-deep: #d9b24e; --green: #2bb56b; --cream: #f3ead2;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--band);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .sheet {
+    max-width: var(--maxw);
+    margin: 0 auto;
+    background: var(--paper);
+    box-shadow: 0 1px 3px rgba(20, 22, 44, 0.06), 0 12px 40px rgba(20, 22, 44, 0.08);
+  }
+
+  h1, h2, h3 { font-family: var(--display); font-weight: 700; text-wrap: balance; margin: 0; }
+
+  .eyebrow {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    font-weight: 700;
+  }
+
+  p { margin: 0; }
+
+  a { color: var(--red); }
+
+  /* ---------- Print / PDF button ---------- */
+  .toolbar {
+    position: fixed;
+    top: 18px;
+    right: 18px;
+    z-index: 20;
+  }
+  .print-btn {
+    font-family: var(--sans);
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: #fff;
+    background: var(--red);
+    border: none;
+    border-radius: 999px;
+    padding: 9px 18px;
+    cursor: pointer;
+    box-shadow: 0 4px 14px rgba(212, 32, 39, 0.35);
+    transition: background 0.18s ease, transform 0.18s ease;
+  }
+  .print-btn:hover { background: var(--red-dark); transform: translateY(-1px); }
+  .print-btn:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+
+  /* ---------- Cover ---------- */
+  .cover {
+    background:
+      radial-gradient(120% 120% at 85% -10%, rgba(234, 201, 94, 0.16), transparent 55%),
+      linear-gradient(160deg, var(--navy) 0%, var(--navy-deep) 100%);
+    color: var(--hero-ink);
+    padding: 46px 56px 52px;
+  }
+  .masthead {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding-bottom: 30px;
+    border-bottom: 1px solid var(--hero-line);
+  }
+  .monogram {
+    width: 44px; height: 44px;
+    padding: 1rem 2rem;
+    flex: none;
+    border: 1.5px solid var(--gold);
+    border-radius: 10px;
+    display: flex;
+    justify-content: center;
+    items: center;
+    place-items: center;
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: 1.15rem;
+    color: var(--gold);
+    letter-spacing: 0.02em;
+  }
+  .wordmark { display: flex; flex-direction: column; line-height: 1.2; }
+  .wordmark b { font-size: 1.06rem; letter-spacing: 0.01em; }
+  .wordmark span { font-size: 0.7rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--hero-muted); }
+
+  .cover .eyebrow { color: var(--gold); margin-top: 40px; }
+  .cover h1 {
+    font-size: clamp(2rem, 5.4vw, 3.05rem);
+    line-height: 1.08;
+    margin: 16px 0 0;
+    letter-spacing: -0.01em;
+  }
+  .cover .lede {
+    color: var(--hero-muted);
+    font-size: 1.06rem;
+    max-width: 60ch;
+    margin-top: 18px;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 30px; }
+  .chip {
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 7px 14px;
+    border: 1px solid var(--hero-line);
+    border-radius: 999px;
+    color: var(--hero-ink);
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  /* ---------- Sections ---------- */
+  section { padding: 48px 56px; }
+  section.alt { background: var(--band); }
+  .section-head { margin-bottom: 26px; }
+  .section-head .eyebrow { color: var(--red); }
+  .section-head h2 { font-size: 1.72rem; margin-top: 10px; letter-spacing: -0.01em; }
+  .section-head p { color: var(--muted); margin-top: 10px; max-width: 62ch; }
+
+  /* ---------- Problem ---------- */
+  .pain-list { display: grid; gap: 14px; margin-top: 4px; }
+  .pain {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 14px;
+    align-items: start;
+    padding-left: 2px;
+  }
+  .pain .bar { width: 3px; align-self: stretch; background: var(--red); border-radius: 2px; }
+  .pain p { color: var(--ink); }
+  .pain b { font-weight: 600; }
+
+  /* ---------- Capability grid ---------- */
+  .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--hairline);
+    border-radius: 12px;
+    padding: 20px 20px 22px;
+  }
+  .card .top { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+  .card h3 { font-size: 1.06rem; letter-spacing: -0.005em; }
+  .card p { color: var(--muted); font-size: 0.92rem; margin-top: 4px; }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex: none;
+    font-family: var(--sans);
+    font-size: 0.64rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--green);
+    background: color-mix(in srgb, var(--green) 12%, transparent);
+    padding: 4px 9px;
+    border-radius: 999px;
+  }
+  .pill .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+
+  /* ---------- Roadmap ---------- */
+  .roadmap { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+  .rm {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--ink);
+    background: var(--card);
+    border: 1px dashed var(--line-strong);
+    border-radius: 8px;
+    padding: 8px 13px;
+  }
+  .rm::before {
+    content: "";
+    display: inline-block;
+    width: 6px; height: 6px;
+    margin-right: 8px;
+    transform: rotate(45deg);
+    background: var(--gold-deep);
+    vertical-align: middle;
+  }
+
+  /* ---------- Benefits ---------- */
+  .benefits { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0; border: 1px solid var(--hairline); border-radius: 12px; overflow: hidden; background: var(--card); }
+  .benefit { padding: 20px 22px; border-bottom: 1px solid var(--hairline); border-right: 1px solid var(--hairline); }
+  .benefit:nth-child(2n) { border-right: none; }
+  .benefit:nth-last-child(-n+2) { border-bottom: none; }
+  .benefit h3 { font-size: 1rem; }
+  .benefit p { color: var(--muted); font-size: 0.9rem; margin-top: 5px; }
+
+  /* ---------- Services ---------- */
+  .services { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  .service {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 14px;
+    align-items: start;
+  }
+  .svc-mark {
+    width: 34px; height: 34px;
+    flex: none;
+    border-radius: 9px;
+    display: grid; place-items: center;
+    background: color-mix(in srgb, var(--navy) 10%, transparent);
+    color: var(--navy);
+  }
+  :root[data-theme="dark"] .svc-mark { color: var(--gold); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .svc-mark { color: var(--gold); } }
+  .svc-mark svg { width: 18px; height: 18px; }
+  .service h3 { font-size: 1rem; }
+  .service p { color: var(--muted); font-size: 0.9rem; margin-top: 3px; }
+
+  /* ---------- Pricing ---------- */
+  .prices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .price {
+    background: var(--card);
+    border: 1px solid var(--hairline);
+    border-radius: 12px;
+    padding: 22px 20px;
+    display: flex;
+    flex-direction: column;
+  }
+  .price.feature { border-color: var(--navy); box-shadow: inset 0 0 0 1px var(--navy); }
+  .price .kicker { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.12em; font-weight: 700; color: var(--red); }
+  .price h3 { font-size: 1.12rem; margin-top: 10px; }
+  .price p { color: var(--muted); font-size: 0.9rem; margin-top: 8px; }
+  .note {
+    margin-top: 22px;
+    padding: 16px 18px;
+    background: var(--cream);
+    border-radius: 10px;
+    font-size: 0.9rem;
+    color: #4a3f1e;
+  }
+  :root[data-theme="dark"] .note { color: #2a2410; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .note { color: #2a2410; } }
+
+  /* ---------- Steps ---------- */
+  .steps { display: grid; gap: 4px; counter-reset: step; }
+  .step {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 18px;
+    align-items: baseline;
+    padding: 16px 0;
+    border-top: 1px solid var(--hairline);
+  }
+  .step:first-child { border-top: none; }
+  .step .num {
+    counter-increment: step;
+    font-family: var(--display);
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--navy);
+    font-variant-numeric: tabular-nums;
+    min-width: 1.5ch;
+  }
+  :root[data-theme="dark"] .step .num { color: var(--gold); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .step .num { color: var(--gold); } }
+  .step .num::before { content: counter(step, decimal-leading-zero); }
+  .step h3 { font-size: 1.02rem; }
+  .step p { color: var(--muted); font-size: 0.92rem; margin-top: 3px; }
+
+  /* ---------- Footer ---------- */
+  .footer {
+    background: linear-gradient(160deg, var(--navy) 0%, var(--navy-deep) 100%);
+    color: var(--hero-ink);
+    padding: 42px 56px 46px;
+  }
+  .footer .eyebrow { color: var(--gold); }
+  .footer h2 { font-family: var(--display); font-size: 1.5rem; margin: 10px 0 0; }
+  .footer p.sub { color: var(--hero-muted); margin-top: 10px; max-width: 54ch; }
+  .contact { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 30px; }
+  .field { border-top: 1px solid var(--hero-line); padding-top: 12px; }
+  .field span { display: block; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.14em; color: var(--hero-muted); }
+  .field b { display: block; font-weight: 400; min-height: 1.4em; margin-top: 8px; border-bottom: 1px dashed var(--hero-line); }
+  .footer .provided { margin-top: 34px; font-size: 0.78rem; color: var(--hero-muted); }
+
+  @media (max-width: 680px) {
+    .cover, section, .footer { padding-left: 26px; padding-right: 26px; }
+    .grid, .benefits, .services, .prices, .contact { grid-template-columns: 1fr; }
+    .benefit { border-right: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+  }
+
+  /* ---------- Print / Save as PDF ---------- */
+  @media print {
+    :root, :root[data-theme="dark"] {
+      --paper: #ffffff; --band: #ffffff; --card: #ffffff; --card-lift: #ffffff;
+      --ink: #1d1d1f; --muted: #45485c; --faint: #7a7a88; --hairline: #d9d8e0; --line-strong: #c4c3ce;
+      --navy: #232d5e; --navy-deep: #171e40; --red: #c01c22; --red-dark: #a91920;
+      --gold: #eac95e; --gold-deep: #a8842a; --green: #007a38; --cream: #faf4e2;
+    }
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    body { background: #fff; font-size: 11.5pt; }
+    .sheet { box-shadow: none; max-width: none; }
+    .toolbar { display: none !important; }
+    .cover, .footer { padding: 34px 44px; }
+    section { padding: 30px 44px; }
+    .card, .price, .service, .step, .benefit, .pain { break-inside: avoid; }
+    .section-head { break-after: avoid; }
+    .footer { break-before: avoid; }
+  }
+</style>
+
+<div class="toolbar">
+  <button class="print-btn" onclick="window.print()">Save as PDF ↓</button>
+</div>
+
+<div class="sheet">
+
+  <!-- COVER -->
+  <header class="cover">
+    <div class="masthead">
+      <div class="monogram" aria-hidden="true">SMP</div>
+      <div class="wordmark">
+        <!-- <b>joef dynamics</b> -->
+        <span>School Management Platform</span>
+      </div>
+    </div>
+
+    <p class="eyebrow">Capabilities &amp; Services</p>
+    <h1>Run exams, results, and attendance from one secure portal.</h1>
+    <p class="lede">
+      A modern web platform that marks tests automatically, tracks attendance,
+      and produces professional, branded result documents — on any device, with
+      nothing to install. Below is what your school gets, and what we do to set
+      it up, run it, and support it.
+    </p>
+
+    <div class="chips">
+      <span class="chip">Multi-campus</span>
+      <span class="chip">Auto-marked CBT</span>
+      <span class="chip">Branded result slips</span>
+      <span class="chip">Term attendance</span>
+      <span class="chip">Common entrance</span>
+    </div>
+  </header>
+
+  <!-- PROBLEM -->
+  <section>
+    <div class="section-head">
+      <p class="eyebrow">The problem</p>
+      <h2>Paper registers and hand-typed results cost time and credibility.</h2>
+      <p>Most schools still run on manual marking and re-typed report sheets. That quietly costs hours every term — and the odd arithmetic slip on a result can dent a parent's trust in the school.</p>
+    </div>
+    <div class="pain-list">
+      <div class="pain"><span class="bar"></span><p><b>Hours lost every term</b> marking scripts and re-typing scores into report cards by hand.</p></div>
+      <div class="pain"><span class="bar"></span><p><b>Avoidable mistakes</b> on totals and positions that undermine the school's credibility.</p></div>
+      <div class="pain"><span class="bar"></span><p><b>Entrance exams</b> that are hard to organise, mark, and rank fairly at scale.</p></div>
+      <div class="pain"><span class="bar"></span><p><b>Attendance</b> kept in a register that never quite makes it onto the report card.</p></div>
+      <div class="pain"><span class="bar"></span><p><b>No single safe record</b> of students, staff, and results — files get lost or damaged.</p></div>
+    </div>
+  </section>
+
+  <!-- CAPABILITIES -->
+  <section class="alt">
+    <div class="section-head">
+      <p class="eyebrow">What your school can do</p>
+      <h2>Everything below is live and working today.</h2>
+      <p>The core platform is already built and running — not a promise. Each module is designed around how a secondary school actually operates.</p>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <div class="top"><h3>Student roster</h3><span class="pill"><span class="dot"></span>Live</span></div>
+        <p>Enrol students, auto-generate a secure sign-in PIN, search and filter by class, reset PINs, and deactivate leavers.</p>
+      </div>
+      <div class="card">
+        <div class="top"><h3>Staff &amp; access control</h3><span class="pill"><span class="dot"></span>Live</span></div>
+        <p>Administrator and teacher logins with clear roles. The system won't let the school lock itself out.</p>
+      </div>
+      <div class="card">
+        <div class="top"><h3>Multi-campus &amp; arms</h3><span class="pill"><span class="dot"></span>Live</span></div>
+        <p>Run several campuses from one account, with flexible arms per level (SS2A, SS2B…) — added and named freely.</p>
+      </div>
+      <div class="card">
+        <div class="top"><h3>Subjects &amp; departments</h3><span class="pill"><span class="dot"></span>Live</span></div>
+        <p>One subject list grouped into Science, Art, and Commercial, with per-student exemptions for subjects they don't take.</p>
+      </div>
+      <div class="card">
+        <div class="top"><h3>Computer-based testing</h3><span class="pill"><span class="dot"></span>Live</span></div>
+        <p>Online tests with a server-side timer and auto-saved answers — a dropped connection never loses a student's work.</p>
+      </div>
+      <div class="card">
+        <div class="top"><h3>Common entrance exams</h3><span class="pill"><span class="dot"></span>Live</span></div>
+        <p>Prospective pupils register and sit online, gated by a shared access code you switch on for exam day only.</p>
+      </div>
+      <div class="card">
+        <div class="top"><h3>Instant auto-marking</h3><span class="pill"><span class="dot"></span>Live</span></div>
+        <p>Objective tests mark themselves accurately the moment they're submitted — no manual grading, no totting-up errors.</p>
+      </div>
+      <div class="card">
+        <div class="top"><h3>Branded result documents</h3><span class="pill"><span class="dot"></span>Live</span></div>
+        <p>Letter-headed PDF result slips, full student transcripts, and ranked class result sheets — all carrying your logo and motto.</p>
+      </div>
+      <div class="card">
+        <div class="top"><h3>Term attendance</h3><span class="pill"><span class="dot"></span>Live</span></div>
+        <p>Class teachers record days present against total school days per term — freely editable, and printed right on the result slip.</p>
+      </div>
+      <div class="card">
+        <div class="top"><h3>Sessions &amp; terms</h3><span class="pill"><span class="dot"></span>Live</span></div>
+        <p>Set up academic sessions and terms and flag the current one, so every result and register lands in the right period.</p>
+      </div>
+      <div class="card">
+        <div class="top"><h3>Secure cloud data</h3><span class="pill"><span class="dot"></span>Live</span></div>
+        <p>Automatic backups, strict access rules, and separate protected logins for staff and students. Works on any device.</p>
+      </div>
+      <div class="card">
+        <div class="top"><h3>No installation</h3><span class="pill"><span class="dot"></span>Live</span></div>
+        <p>Everything runs in the browser on phones, tablets, and computers — nothing for your staff to download or maintain.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ROADMAP -->
+  <section>
+    <div class="section-head">
+      <p class="eyebrow">On the roadmap</p>
+      <h2>And more we can build for your school on request.</h2>
+      <p>Natural next steps, delivered as part of a service engagement — so you can start with the essentials and grow.</p>
+    </div>
+    <div class="roadmap">
+      <span class="rm">Full report cards &amp; result templates</span>
+      <span class="rm">Parent / guardian portal</span>
+      <span class="rm">Fees &amp; payments</span>
+      <span class="rm">SMS &amp; email alerts</span>
+      <span class="rm">Continuous assessment scoring</span>
+      <span class="rm">Timetables &amp; scheduling</span>
+      <span class="rm">Performance analytics</span>
+      <span class="rm">Bulk student import</span>
+      <span class="rm">Bespoke document designs</span>
+    </div>
+  </section>
+
+  <!-- BENEFITS -->
+  <section class="alt">
+    <div class="section-head">
+      <p class="eyebrow">Why it matters</p>
+      <h2>What the school actually gets out of it.</h2>
+    </div>
+    <div class="benefits">
+      <div class="benefit"><h3>Time saved</h3><p>Objective tests mark themselves; results and slips generate in seconds, not hours.</p></div>
+      <div class="benefit"><h3>Fewer errors</h3><p>Automatic scoring and ranking removes arithmetic mistakes from every result.</p></div>
+      <div class="benefit"><h3>A professional image</h3><p>Every document carries the school's logo, name, and motto — parents see a credible institution.</p></div>
+      <div class="benefit"><h3>Parent trust</h3><p>Consistent, accurate results and attendance, together on one clean slip.</p></div>
+      <div class="benefit"><h3>One safe record</h3><p>Students, staff, and results in one backed-up place — nothing lost to a damaged file or crashed laptop.</p></div>
+      <div class="benefit"><h3>Fair entrance exams</h3><p>Applicants sit and are ranked automatically and impartially.</p></div>
+    </div>
+  </section>
+
+  <!-- SERVICES -->
+  <section>
+    <div class="section-head">
+      <p class="eyebrow">What we do for you</p>
+      <h2>You get a partner, not just a login.</h2>
+      <p>Software is only half the job. We set it up, make it yours, keep it running, and train your people.</p>
+    </div>
+    <div class="services">
+      <div class="service">
+        <span class="svc-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 3 7l9 5 9-5-9-5Z"/><path d="M3 12l9 5 9-5"/></svg></span>
+        <div><h3>Setup &amp; onboarding</h3><p>We stand up your own instance and configure campuses, classes, subjects, sessions, and terms to match your school.</p></div>
+      </div>
+      <div class="service">
+        <span class="svc-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18"/></svg></span>
+        <div><h3>Branding &amp; customisation</h3><p>Your name, logo, motto, and colours across the portal and every document, tailored to your preferred layout.</p></div>
+      </div>
+      <div class="service">
+        <span class="svc-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7V5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2"/><path d="M4 7h16v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1Z"/><path d="M9 12h6"/></svg></span>
+        <div><h3>Data migration</h3><p>We load your existing student and staff lists so you start ready to go, not from a blank page.</p></div>
+      </div>
+      <div class="service">
+        <span class="svc-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 8l10 5 10-5-10-5Z"/><path d="M6 10v5c0 1.7 2.7 3 6 3s6-1.3 6-3v-5"/></svg></span>
+        <div><h3>Staff training</h3><p>Hands-on training for admins and teachers, plus simple quick-reference guides they can keep.</p></div>
+      </div>
+      <div class="service">
+        <span class="svc-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15a4 4 0 0 1 0-8 5 5 0 0 1 9.6-1.5A4.5 4.5 0 0 1 19 15Z"/></svg></span>
+        <div><h3>Hosting &amp; maintenance</h3><p>Reliable cloud hosting, monitoring, backups, updates, and security patches — all handled for you.</p></div>
+      </div>
+      <div class="service">
+        <span class="svc-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z"/></svg></span>
+        <div><h3>Support</h3><p>A direct line for help when staff have questions or need a hand during exams, with response times agreed up front.</p></div>
+      </div>
+      <div class="service">
+        <span class="svc-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m8 6-6 6 6 6"/><path d="m16 6 6 6-6 6"/></svg></span>
+        <div><h3>Custom development</h3><p>We build the roadmap features — report cards, parent portal, fees, analytics — around your school's own process.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PRICING -->
+  <section class="alt">
+    <div class="section-head">
+      <p class="eyebrow">Engagement</p>
+      <h2>Flexible options that fit the school's size.</h2>
+      <p>Final figures are set per school after a short discovery call. Three ways the engagement is typically structured:</p>
+    </div>
+    <div class="prices">
+      <div class="price">
+        <span class="kicker">Once</span>
+        <h3>Setup fee</h3>
+        <p>Onboarding, branding, data loading, and staff training — everything needed to go live.</p>
+      </div>
+      <div class="price feature">
+        <span class="kicker">Recurring</span>
+        <h3>Subscription</h3>
+        <p>Hosting, maintenance, backups, support, and updates. Priced per term, per year, or per student.</p>
+      </div>
+      <div class="price">
+        <span class="kicker">Per project</span>
+        <h3>Custom builds</h3>
+        <p>Roadmap and bespoke features quoted individually as you decide to add them.</p>
+      </div>
+    </div>
+    <p class="note"><b>Typical starting package:</b> a one-time setup + branding + training fee, then a per-term subscription that scales with student numbers. Add-ons such as report cards, a parent portal, or SMS alerts are quoted separately.</p>
+  </section>
+
+  <!-- NEXT STEPS -->
+  <section>
+    <div class="section-head">
+      <p class="eyebrow">Getting started</p>
+      <h2>From first call to go-live in one term.</h2>
+    </div>
+    <div class="steps">
+      <div class="step"><span class="num" aria-hidden="true"></span><div><h3>Discovery call</h3><p>Thirty minutes to understand your school's size, campuses, and current process.</p></div></div>
+      <div class="step"><span class="num" aria-hidden="true"></span><div><h3>Live demo</h3><p>A guided walkthrough of the platform using sample data.</p></div></div>
+      <div class="step"><span class="num" aria-hidden="true"></span><div><h3>Proposal</h3><p>A fixed quote for setup and subscription, tailored to your school.</p></div></div>
+      <div class="step"><span class="num" aria-hidden="true"></span><div><h3>Onboarding</h3><p>We configure, brand, load your data, and train your staff.</p></div></div>
+      <div class="step"><span class="num" aria-hidden="true"></span><div><h3>Go live</h3><p>Start running tests, attendance, and results the same term.</p></div></div>
+    </div>
+  </section>
+
+  <!-- FOOTER / CONTACT -->
+  <footer class="footer">
+    <p class="eyebrow">Let's talk</p>
+    <h2>Book a discovery call and see it on your school's data.</h2>
+    <p class="sub">Reach out to arrange a demo, or fill in the details below and share this document with your decision-makers.</p>
+    <div class="contact">
+      <div class="field"><span>Prepared by</span><b>&nbsp;</b></div>
+      <div class="field"><span>Contact</span><b>&nbsp;</b></div>
+      <div class="field"><span>Date</span><b>&nbsp;</b></div>
+    </div>
+    <p class="provided">Platform &amp; services provided by joef dynamics.</p>
+  </footer>
+
+</div>

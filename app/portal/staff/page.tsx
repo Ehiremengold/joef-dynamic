@@ -9,10 +9,12 @@ import ExamsPanel from "@/components/portal/staff/ExamsPanel";
 import ResultsPanel from "@/components/portal/staff/ResultsPanel";
 import RosterPanel from "@/components/portal/staff/RosterPanel";
 import TeamPanel from "@/components/portal/staff/TeamPanel";
+import ClassesPanel from "@/components/portal/staff/ClassesPanel";
+import AttendancePanel from "@/components/portal/staff/AttendancePanel";
 import type { StaffRole } from "@/lib/types";
 
-type Me = { fullName: string; role: StaffRole; email: string } | null;
-type Tab = "exams" | "results" | "students" | "team";
+type Me = { id: string; fullName: string; role: StaffRole; email: string } | null;
+type Tab = "exams" | "results" | "students" | "classes" | "attendance" | "team";
 
 function useStaff() {
   const [me, setMe] = useState<Me>(null);
@@ -45,6 +47,8 @@ const TABS: [Tab, string][] = [
   ["exams", "Exams & questions"],
   ["results", "Results"],
   ["students", "Students"],
+  ["classes", "Classes"],
+  ["attendance", "Attendance"],
   ["team", "Staff accounts"],
 ];
 
@@ -84,7 +88,7 @@ export default function StaffPage() {
             </div>
             {me && (
               <div className="mt-6 flex flex-wrap gap-2">
-                {TABS.filter(([key]) => key !== "team" || me.role === "admin").map(
+                {TABS.filter(([key]) => (key !== "team" && key !== "classes") || me.role === "admin").map(
                   ([key, label]) => (
                     <button
                       key={key}
@@ -116,6 +120,10 @@ export default function StaffPage() {
             <ResultsPanel onUnauthorized={refresh} />
           ) : tab === "students" ? (
             <RosterPanel onUnauthorized={refresh} />
+          ) : tab === "classes" ? (
+            <ClassesPanel onUnauthorized={refresh} />
+          ) : tab === "attendance" ? (
+            <AttendancePanel me={me} onUnauthorized={refresh} />
           ) : (
             <TeamPanel currentEmail={me.email} onUnauthorized={refresh} />
           )}
