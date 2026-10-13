@@ -6,6 +6,10 @@ export const BRAND = {
   gold: "#EAC95E",
   graphite: "#4D4C5C",
   smoke: "#DCDCE5",
+  ink: "#1D1D1F",
+  band: "#FCE38A", // title and table-header bands on school documents
+  green: "#15803D",
+  amber: "#EA580C",
   schoolName: "Joef Dynamic College",
   motto: "The Solid Foundation",
   addressLines: [

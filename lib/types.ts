@@ -7,6 +7,13 @@ export const CLASSES = [
 ] as const;
 export type ClassName = (typeof CLASSES)[number];
 
+/** How each level is written out on documents that leave the school. */
+export const LEVEL_NAMES: Record<ClassName, string> = {
+  KG1: "KG 1", KG2: "KG 2", NUR1: "Nursery 1", NUR2: "Nursery 2",
+  BS1: "Basic 1", BS2: "Basic 2", BS3: "Basic 3", BS4: "Basic 4", BS5: "Basic 5",
+  JS1: "JSS 1", JS2: "JSS 2", JS3: "JSS 3", SS1: "SSS 1", SS2: "SSS 2", SS3: "SSS 3",
+};
+
 export type ExamType = "entrance" | "class";
 export type TakerType = "student" | "candidate";
 export type StaffRole = "admin" | "teacher";
@@ -185,4 +192,21 @@ export type StudentAttendance = {
   daysPresent: number;
   updatedBy: string | null;
   updatedAt: string;
+};
+
+/** One student's results for one term, as printed on their report sheet. */
+export type ReportSheet = {
+  sessionName: string;
+  termName: Term["name"];
+  /** The class they sat in that term, e.g. "Basic 1 (Ikoyi)". */
+  classLabel: string | null;
+  studentsInClass: number | null;
+  /** Mean of the class's term percentages. */
+  classAverage: number | null;
+  attendance: { totalDays: number; daysPresent: number } | null;
+  nextTermBegins: string | null;
+  caMax: number;
+  examMax: number;
+  /** In the class's report order. A mark never entered is null. */
+  subjects: { name: string; ca: number | null; exam: number | null }[];
 };

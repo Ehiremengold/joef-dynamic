@@ -1,10 +1,11 @@
 import "server-only";
-import PDFDocument from "pdfkit";
+import { LEVEL_NAMES, type ReportSheet, type Student } from "@/lib/types";
 import { BRAND } from "./brand";
-import { LOGO_PNG_BASE64 } from "./logo-base64";
+import { contentBottom, createDocument, drawFooter, drawLetterhead, type Box } from "./page";
+import { drawReportSheet, REPORT_MARGIN } from "./reportSheet";
 
-const PAGE_WIDTH = 495; // usable width on A4 with 50pt margins each side (595.28 - 50 - 50)
-const LOGO_BUFFER = Buffer.from(LOGO_PNG_BASE64, "base64");
+// Usable width on A4 with 50pt margins each side (595.28 - 50 - 50).
+const BOX: Box = { left: 50, width: 495 };
 
 function pct(score: number, total: number): number {
   return total ? Math.round((score / total) * 100) : 0;
@@ -17,77 +18,6 @@ function fmtDate(iso: string): string {
   });
 }
 
-function collect(doc: PDFKit.PDFDocument): Promise<Buffer> {
-  const chunks: Buffer[] = [];
-  doc.on("data", (c: Buffer) => chunks.push(c));
-  return new Promise((resolve) => {
-    doc.on("end", () => resolve(Buffer.concat(chunks)));
-  });
-}
-
-/** Draws the branded letterhead. Returns the y-coordinate to start content at. */
-function drawHeader(
-  doc: PDFKit.PDFDocument,
-  title: string,
-  subtitle?: string
-): number {
-  doc.image(LOGO_BUFFER, 50, 42, { width: 46 });
-
-  doc
-    .fillColor(BRAND.navy)
-    .font("Helvetica-Bold")
-    .fontSize(16)
-    .text(BRAND.schoolName, 106, 46);
-
-  doc
-    .fillColor(BRAND.graphite)
-    .font("Helvetica")
-    .fontSize(9)
-    .text(`Motto: ${BRAND.motto}`, 106, 66);
-
-  doc
-    .moveTo(50, 98)
-    .lineTo(50 + PAGE_WIDTH, 98)
-    .lineWidth(2)
-    .strokeColor(BRAND.red)
-    .stroke();
-
-  doc.fillColor(BRAND.navy).font("Helvetica-Bold").fontSize(18).text(title, 50, 114);
-
-  let y = 138;
-  if (subtitle) {
-    doc.fillColor(BRAND.graphite).font("Helvetica").fontSize(11).text(subtitle, 50, y);
-    y += 22;
-  }
-  return y + 8;
-}
-
-/**
- * Draws the footer on the current page. Both the rule and the text must sit
- * strictly above the page's bottom margin boundary (page.height - margin) —
- * pdfkit silently starts a new page if a .text() call lands past it, which
- * is why this uses -70/-56 rather than -56/-46 (which used to poke through).
- */
-function drawFooter(doc: PDFKit.PDFDocument): void {
-  const bottom = doc.page.height - 70;
-  doc
-    .moveTo(50, bottom)
-    .lineTo(50 + PAGE_WIDTH, bottom)
-    .lineWidth(0.5)
-    .strokeColor(BRAND.smoke)
-    .stroke();
-  doc
-    .fillColor(BRAND.graphite)
-    .font("Helvetica")
-    .fontSize(8)
-    .text(
-      `Generated ${new Date().toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })} · ${BRAND.schoolName} Portal`,
-      50,
-      bottom + 10,
-      { width: PAGE_WIDTH, align: "center" }
-    );
-}
-
 type Column = { header: string; width: number; align?: "left" | "right" | "center" };
 
 /** Hand-rolled table with a navy header row, zebra striping, and page-break handling. */
@@ -97,7 +27,7 @@ function drawTable(
   columns: Column[],
   rows: string[][]
 ): number {
-  const startX = 50;
+  const startX = BOX.left;
   const rowHeight = 22;
   const tableWidth = columns.reduce((s, c) => s + c.width, 0);
 
@@ -119,7 +49,7 @@ function drawTable(
   doc.font("Helvetica").fontSize(9);
 
   rows.forEach((row, i) => {
-    if (y + rowHeight > doc.page.height - 90) {
+    if (y + rowHeight > contentBottom(doc)) {
       doc.addPage();
       y = drawHeaderRow(50);
       doc.font("Helvetica").fontSize(9);
@@ -169,10 +99,9 @@ export type ResultSlipInput = {
 };
 
 export async function buildResultSlipPdf(input: ResultSlipInput): Promise<Buffer> {
-  const doc = new PDFDocument({ size: "A4", margin: 50 });
-  const done = collect(doc);
+  const { doc, done } = createDocument(BOX.left);
 
-  let y = drawHeader(doc, "Result Slip", input.examTitle);
+  const y = drawLetterhead(doc, BOX, "Result Slip", input.examTitle);
 
   const percentage = pct(input.score, input.total);
 
@@ -208,7 +137,7 @@ export async function buildResultSlipPdf(input: ResultSlipInput): Promise<Buffer
 
   // Score panel on the right
   const boxX = 50 + detailWidth + 20;
-  const boxW = PAGE_WIDTH - detailWidth - 20;
+  const boxW = BOX.width - detailWidth - 20;
   const boxY = y;
   const boxH = 130;
   doc.rect(boxX, boxY, boxW, boxH).fill("#F5F5F7");
@@ -228,13 +157,13 @@ export async function buildResultSlipPdf(input: ResultSlipInput): Promise<Buffer
     .fontSize(16)
     .text(`${percentage}%`, boxX, boxY + 84, { width: boxW, align: "center" });
 
-  drawFooter(doc);
+  drawFooter(doc, BOX);
   doc.end();
   return done;
 }
 
 /* ------------------------------------------------------------------ */
-/* 2. Student transcript (all of one student's results)                */
+/* 2. Student transcript (every term's report sheet, then their tests) */
 /* ------------------------------------------------------------------ */
 
 export type TranscriptRow = {
@@ -246,28 +175,27 @@ export type TranscriptRow = {
 };
 
 export type TranscriptInput = {
-  fullName: string;
-  admissionNumber: string;
-  className: string;
-  rows: TranscriptRow[];
+  student: Pick<Student, "fullName" | "admissionNumber" | "gender" | "className">;
+  /** One per term the student has scores for, newest first. */
+  reports: ReportSheet[];
+  /** Computer-based tests the student has sat, oldest first. */
+  tests: TranscriptRow[];
 };
 
-export async function buildTranscriptPdf(input: TranscriptInput): Promise<Buffer> {
-  const doc = new PDFDocument({ size: "A4", margin: 50 });
-  const done = collect(doc);
+/** The page listing a student's computer-based tests, or saying there is nothing on record. */
+function drawTests(doc: PDFKit.PDFDocument, input: TranscriptInput): void {
+  const { student, tests } = input;
+  const subtitle = `${student.fullName} · ${LEVEL_NAMES[student.className]} · Admission ${student.admissionNumber}`;
+  let y = drawLetterhead(doc, BOX, "Computer-Based Test Results", subtitle);
 
-  const subtitle = `${input.fullName} · ${input.className} · Admission ${input.admissionNumber}`;
-  let y = drawHeader(doc, "Student Result Transcript", subtitle);
-
-  if (input.rows.length === 0) {
+  if (tests.length === 0) {
     doc
       .fillColor(BRAND.graphite)
       .font("Helvetica")
       .fontSize(11)
-      .text("This student has not taken any tests yet.", 50, y);
-    drawFooter(doc);
-    doc.end();
-    return done;
+      .text("No results are recorded for this student yet.", BOX.left, y, { width: BOX.width, align: "center" });
+    drawFooter(doc, BOX);
+    return;
   }
 
   const columns: Column[] = [
@@ -279,7 +207,7 @@ export async function buildTranscriptPdf(input: TranscriptInput): Promise<Buffer
     { header: "Date", width: 90, align: "right" },
   ];
 
-  const rows = input.rows.map((r, i) => [
+  const rows = tests.map((r, i) => [
     String(i + 1),
     r.examTitle,
     r.examType === "entrance" ? "Entrance" : "Class Test",
@@ -290,16 +218,33 @@ export async function buildTranscriptPdf(input: TranscriptInput): Promise<Buffer
 
   y = drawTable(doc, y, columns, rows);
 
-  const avg = Math.round(
-    input.rows.reduce((sum, r) => sum + pct(r.score, r.total), 0) / input.rows.length
-  );
+  const avg = Math.round(tests.reduce((sum, r) => sum + pct(r.score, r.total), 0) / tests.length);
   doc
     .fillColor(BRAND.navy)
     .font("Helvetica-Bold")
     .fontSize(11)
-    .text(`Average score across ${input.rows.length} test${input.rows.length === 1 ? "" : "s"}: ${avg}%`, 50, y + 14);
+    .text(`Average score across ${tests.length} test${tests.length === 1 ? "" : "s"}: ${avg}%`, BOX.left, y + 14);
 
-  drawFooter(doc);
+  drawFooter(doc, BOX);
+}
+
+/**
+ * A student's whole record in one PDF: a report sheet for every term they
+ * have scores for, newest first, then their computer-based test results.
+ */
+export async function buildTranscriptPdf(input: TranscriptInput): Promise<Buffer> {
+  const { doc, done } = createDocument(REPORT_MARGIN);
+
+  input.reports.forEach((sheet, i) => {
+    if (i > 0) doc.addPage();
+    drawReportSheet(doc, input.student, sheet);
+  });
+
+  if (input.tests.length > 0 || input.reports.length === 0) {
+    if (input.reports.length > 0) doc.addPage();
+    drawTests(doc, input);
+  }
+
   doc.end();
   return done;
 }
@@ -324,8 +269,7 @@ export type ClassSheetInput = {
 };
 
 export async function buildClassSheetPdf(input: ClassSheetInput): Promise<Buffer> {
-  const doc = new PDFDocument({ size: "A4", margin: 50 });
-  const done = collect(doc);
+  const { doc, done } = createDocument(BOX.left);
 
   const subtitle = [
     input.examTitle,
@@ -333,7 +277,7 @@ export async function buildClassSheetPdf(input: ClassSheetInput): Promise<Buffer
   ]
     .filter(Boolean)
     .join(" · ");
-  let y = drawHeader(doc, "Class Result Sheet", subtitle);
+  let y = drawLetterhead(doc, BOX, "Class Result Sheet", subtitle);
 
   if (input.rows.length === 0) {
     doc
@@ -341,7 +285,7 @@ export async function buildClassSheetPdf(input: ClassSheetInput): Promise<Buffer
       .font("Helvetica")
       .fontSize(11)
       .text("No one has taken this test yet.", 50, y);
-    drawFooter(doc);
+    drawFooter(doc, BOX);
     doc.end();
     return done;
   }
@@ -376,7 +320,7 @@ export async function buildClassSheetPdf(input: ClassSheetInput): Promise<Buffer
     .fontSize(11)
     .text(`${input.rows.length} result${input.rows.length === 1 ? "" : "s"} · class average: ${avg}%`, 50, y + 14);
 
-  drawFooter(doc);
+  drawFooter(doc, BOX);
   doc.end();
   return done;
 }

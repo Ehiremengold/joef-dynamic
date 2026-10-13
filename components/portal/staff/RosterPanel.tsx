@@ -74,8 +74,10 @@ export default function RosterPanel({
     if (res.ok) reload();
   }
 
+  // Side by side only where every roster column fits beside the form (about
+  // 1290px wide); below that the form goes on top and the table takes the row.
   return (
-    <div className="grid gap-8 xl:grid-cols-[300px_1fr]">
+    <div className="grid gap-8 min-[1340px]:grid-cols-[300px_1fr]">
       {/* The roster is A–Z, so a new student rarely lands on the page in view:
           search for them, which puts them on screen under their PIN. */}
       <AddStudent
@@ -201,6 +203,14 @@ export default function RosterPanel({
                         >
                           Subjects
                         </button>
+                        <a
+                          href={`/api/students/${s.id}/transcript`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="cursor-pointer text-[13px] font-semibold text-brand-navy hover:underline"
+                        >
+                          Transcript
+                        </a>
                       </div>
                     </td>
                   </tr>

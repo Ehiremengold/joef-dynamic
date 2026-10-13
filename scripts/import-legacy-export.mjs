@@ -1,9 +1,10 @@
 /**
  * Import the legacy school-management export (the folder of .xlsx workbooks)
- * into the portal database. Run after migration 0009.
+ * into the portal database. Run after the migrations.
  *
- *   node scripts/import-legacy-export.mjs <export-dir>            # dry run
- *   node scripts/import-legacy-export.mjs <export-dir> --apply    # write
+ *   node scripts/import-legacy-export.mjs <export-dir>                    # dry run
+ *   node scripts/import-legacy-export.mjs <export-dir> --apply            # write
+ *   node scripts/import-legacy-export.mjs <export-dir> --report-details   # see below
  *
  * A dry run needs no database: it parses and checks the workbooks, prints
  * what would be loaded, and writes every row that needs a human look to
@@ -14,6 +15,11 @@
  * exactly as they are, so nothing edited in the portal is ever overwritten.
  * New students get a generated PIN and new staff a generated password; the
  * plaintext is written once to import-output/ (gitignored) for hand-out.
+ *
+ * --report-details does one narrow thing, for a database that was imported
+ * before report sheets existed: it fills in each class's subject order and
+ * each term's next-term date, where those are still blank. It adds no rows
+ * and changes nothing that is already set. (--apply does this too, at the end.)
  */
 import { createClient } from "@supabase/supabase-js";
 import bcrypt from "bcryptjs";
@@ -177,6 +183,7 @@ async function buildPlan(dir) {
   const terms = sheetRecords(calendar, "Terms").map((r) => ({
     session: sessionName(r["Session"]),
     name: termName(r["Term"]),
+    nextTermBegins: /^\d{4}-\d{2}-\d{2}$/.test(r["Next Term Begins"] ?? "") ? r["Next Term Begins"] : null,
   }));
   // The export flags a "current" term in every session; only the latest counts.
   const currentSession = sessions[sessions.length - 1];
@@ -202,12 +209,18 @@ async function buildPlan(dir) {
 
   // --- subjects & what each class offers this session
   const subjects = new Set(sheetRecords(structure, "Subjects").map((r) => subjectName(r["Subject"])));
-  const classSubjects = new Set(); // "classKey::subject"
+  // The sheet lists each class's subjects in the order its report sheets use.
+  const classSubjects = new Map(); // "classKey::subject" → position within the class, from 1
+  const subjectsInClass = new Map(); // classKey → how many so far
   for (const r of sheetRecords(structure, "Class Subjects")) {
     if (sessionName(r["Session"]) !== currentSession) continue;
     const cls = classByRawName.get(r["Class"]);
     if (!cls) continue;
-    classSubjects.add(`${classKey(cls)}::${subjectName(r["Subject"])}`);
+    const key = `${classKey(cls)}::${subjectName(r["Subject"])}`;
+    if (classSubjects.has(key)) continue;
+    const position = (subjectsInClass.get(classKey(cls)) ?? 0) + 1;
+    subjectsInClass.set(classKey(cls), position);
+    classSubjects.set(key, position);
   }
 
   // --- students
@@ -389,7 +402,7 @@ async function buildPlan(dir) {
     currentTerm,
     classes: [...classes.values()],
     subjects: [...subjects].sort(),
-    classSubjects: [...classSubjects].map((k) => k.split("::")),
+    classSubjects: [...classSubjects].map(([key, position]) => [...key.split("::"), position]),
     students: [...students.values()],
     parents: [...parents.values()],
     staff: [...staff.values()],
@@ -453,7 +466,7 @@ function loadEnv() {
   }
 }
 
-async function apply(plan) {
+function connect() {
   loadEnv();
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -462,8 +475,6 @@ async function apply(plan) {
     process.exit(1);
   }
   const supa = createClient(url, key, { auth: { persistSession: false } });
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  mkdirSync(OUT_DIR, { recursive: true });
 
   const ok = ({ data, error }, what) => {
     if (error) throw new Error(`${what}: ${error.message}`);
@@ -487,6 +498,49 @@ async function apply(plan) {
       );
     }
   };
+  return { supa, ok, fetchAll, insertNew };
+}
+
+/**
+ * Fill in what the term report sheet needs and the first import did not
+ * carry: each class's subject order and each term's next-term date. Only
+ * blanks are filled — no rows are added and nothing already set is changed.
+ */
+async function fillReportDetails(plan, { supa, ok, fetchAll }) {
+  const sessionId = new Map((await fetchAll("academic_sessions", "id, name")).map((r) => [r.name, r.id]));
+  const termRows = await fetchAll("terms", "id, session_id, name, next_term_begins");
+  let dates = 0;
+  for (const t of plan.terms) {
+    const row = termRows.find((r) => r.session_id === sessionId.get(t.session) && r.name === t.name);
+    if (!t.nextTermBegins || !row || row.next_term_begins) continue;
+    ok(await supa.from("terms").update({ next_term_begins: t.nextTermBegins }).eq("id", row.id), "set next-term date");
+    dates++;
+  }
+  console.log(`  ${"Next-term dates".padEnd(16)} ${String(dates).padStart(6)} filled in`);
+
+  const campusName = new Map((await fetchAll("campuses", "id, name")).map((r) => [r.id, r.name]));
+  const classKeyById = new Map(
+    (await fetchAll("classes", "id, campus_id, level, arm")).map((r) => [
+      r.id,
+      classKey({ campus: campusName.get(r.campus_id), level: r.level, arm: r.arm }),
+    ])
+  );
+  const subjectNameById = new Map((await fetchAll("subjects", "id, name")).map((r) => [r.id, r.name]));
+  const position = new Map(plan.classSubjects.map(([cls, subject, pos]) => [`${cls}::${subject}`, pos]));
+  const blanks = (await fetchAll("class_subjects", "id, class_id, subject_id, position"))
+    .filter((r) => r.position === null)
+    .map((r) => ({ ...r, position: position.get(`${classKeyById.get(r.class_id)}::${subjectNameById.get(r.subject_id)}`) }))
+    .filter((r) => r.position !== undefined);
+  for (let i = 0; i < blanks.length; i += 500) {
+    ok(await supa.from("class_subjects").upsert(blanks.slice(i, i + 500), { onConflict: "id" }), "set subject order");
+  }
+  console.log(`  ${"Subject order".padEnd(16)} ${String(blanks.length).padStart(6)} filled in`);
+}
+
+async function apply(plan, db) {
+  const { supa, ok, fetchAll, insertNew } = db;
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  mkdirSync(OUT_DIR, { recursive: true });
   const done = (label, added, total) =>
     console.log(`  ${label.padEnd(16)} ${String(added).padStart(6)} added, ${total - added} already there`);
 
@@ -660,6 +714,8 @@ async function apply(plan) {
   );
   const { count: scoresAfter } = await supa.from("term_scores").select("id", { count: "exact", head: true });
   done("Term scores", (scoresAfter ?? 0) - (scoresBefore ?? 0), plan.scores.length);
+
+  await fillReportDetails(plan, db);
 }
 
 // ------------------------------------------------------------------
@@ -667,8 +723,9 @@ async function apply(plan) {
 const args = process.argv.slice(2);
 const dir = args.find((a) => !a.startsWith("--"));
 const shouldApply = args.includes("--apply");
+const reportDetailsOnly = args.includes("--report-details");
 if (!dir) {
-  console.error("Usage: node scripts/import-legacy-export.mjs <export-dir> [--apply]");
+  console.error("Usage: node scripts/import-legacy-export.mjs <export-dir> [--apply | --report-details]");
   process.exit(1);
 }
 
@@ -676,9 +733,13 @@ const plan = await buildPlan(dir);
 printPlan(plan);
 console.log(`\nFull list: ${writeReview(plan.review)}`);
 
-if (shouldApply) {
+if (reportDetailsOnly) {
+  console.log("\nFilling in report-sheet details");
+  await fillReportDetails(plan, connect());
+  console.log("\n✅ Done.");
+} else if (shouldApply) {
   console.log("\nWriting to the database");
-  await apply(plan);
+  await apply(plan, connect());
   console.log("\n✅ Import finished.");
 } else {
   console.log("\nDry run — nothing was written. Re-run with --apply to load the data.");

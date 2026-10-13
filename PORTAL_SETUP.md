@@ -56,6 +56,14 @@ The dry run needs no database: it prints what would be loaded and writes every r
 worth a second look to `import-output/review.csv`. `--apply` only ever adds rows —
 anything already in the portal is left as it is — so it is safe to re-run.
 
+If the data was imported before report sheets existed (migration 0011), run this once
+to fill in each class's subject order and each term's next-term date. It only fills
+blanks — it adds no rows and changes nothing already set:
+
+```
+node scripts/import-legacy-export.mjs /path/to/export-folder --report-details
+```
+
 New students get a PIN and new staff a password. They are written once to
 `import-output/student-pins-*.csv` and `import-output/staff-passwords-*.csv`; hand
 them out, then delete the files. That folder is gitignored — never commit it.
