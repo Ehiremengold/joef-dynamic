@@ -12,6 +12,9 @@ next-env.d.ts
 # Legacy JSON store (replaced by Supabase)
 data/db.json
 
+# Legacy import output — holds student PINs and staff passwords.
+import-output
+
 # Supabase CLI local files
 supabase/.branches
 supabase/.temp

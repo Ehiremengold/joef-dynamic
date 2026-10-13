@@ -1,4 +1,10 @@
-export const CLASSES = ["JS1", "JS2", "JS3", "SS1", "SS2", "SS3"] as const;
+// Youngest to oldest. Keep in step with the level checks in
+// supabase/migrations/0009_whole_school_records.sql.
+export const CLASSES = [
+  "KG1", "KG2", "NUR1", "NUR2",
+  "BS1", "BS2", "BS3", "BS4", "BS5",
+  "JS1", "JS2", "JS3", "SS1", "SS2", "SS3",
+] as const;
 export type ClassName = (typeof CLASSES)[number];
 
 export type ExamType = "entrance" | "class";
@@ -84,6 +90,10 @@ export type Student = {
   className: ClassName;
   classId: string | null;
   entryYear: string;
+  gender: "male" | "female" | null;
+  dateOfBirth: string | null;
+  address: string | null;
+  phone: string | null;
   active: boolean;
   createdAt: string;
 };

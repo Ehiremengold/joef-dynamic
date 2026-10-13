@@ -27,6 +27,7 @@
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "@types/ws": "^8.5.13",
+    "exceljs": "^4.4.0",
     "tailwindcss": "^4.1.10",
     "typescript": "^5.8.3"
   }

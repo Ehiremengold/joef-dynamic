@@ -1,6 +1,6 @@
 import "server-only";
 import { serviceClient } from "@/lib/supabase/server";
-import type { Class, ClassName, ClassSubject } from "@/lib/types";
+import { CLASSES, type Class, type ClassName, type ClassSubject } from "@/lib/types";
 
 type Row = Record<string, unknown>;
 
@@ -25,11 +25,13 @@ export async function listClasses(filter?: { campusId?: string }): Promise<Class
   let q = serviceClient()
     .from("classes")
     .select(CLASS_SELECT)
-    .order("level", { ascending: true })
     .order("arm", { ascending: true });
   if (filter?.campusId) q = q.eq("campus_id", filter.campusId);
   const { data } = await q;
-  return (data ?? []).map(mapClass);
+  // Levels sort by school order (KG1..SS3), which isn't alphabetical.
+  return (data ?? [])
+    .map(mapClass)
+    .sort((a, b) => CLASSES.indexOf(a.level) - CLASSES.indexOf(b.level));
 }
 
 export async function getClassById(id: string): Promise<Class | null> {

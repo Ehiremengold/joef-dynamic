@@ -13,6 +13,10 @@ function mapStudent(r: Row): Student {
     className: r.class_name as ClassName,
     classId: (r.class_id as string | null) ?? null,
     entryYear: r.entry_year as string,
+    gender: (r.gender as Student["gender"]) ?? null,
+    dateOfBirth: (r.date_of_birth as string | null) ?? null,
+    address: (r.address as string | null) ?? null,
+    phone: (r.phone as string | null) ?? null,
     active: r.active as boolean,
     createdAt: r.created_at as string,
   };

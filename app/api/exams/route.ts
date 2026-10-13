@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
     const type: ExamType = body.type === "entrance" ? "entrance" : "class";
     if (type === "class" && !CLASSES.includes(body.className)) {
       return NextResponse.json(
-        { error: "A valid class (JS1–SS3) is required for class tests" },
+        { error: "A valid class is required for class tests" },
         { status: 400 }
       );
     }
