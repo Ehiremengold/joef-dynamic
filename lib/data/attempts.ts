@@ -1,6 +1,8 @@
 import "server-only";
 import { serviceClient } from "@/lib/supabase/server";
+import type { Page } from "@/lib/paging";
 import type { Attempt, ExamType, TakerType } from "@/lib/types";
+import { readPage } from "./paging";
 
 type Row = Record<string, unknown>;
 
@@ -77,11 +79,9 @@ export type AttemptFilter = {
   type?: ExamType;
 };
 
-export async function listAttempts(filter: AttemptFilter): Promise<Attempt[]> {
-  let q = serviceClient()
-    .from("attempts")
-    .select("*")
-    .order("submitted_at", { ascending: false });
+/** The filtered, ordered attempts query; `count` adds the total a paged read needs. */
+function attemptsQuery(filter: AttemptFilter, count?: "exact") {
+  let q = serviceClient().from("attempts").select("*", { count });
 
   if (filter.studentId) q = q.eq("student_id", filter.studentId);
   if (filter.examId) q = q.eq("exam_id", filter.examId);
@@ -90,8 +90,18 @@ export async function listAttempts(filter: AttemptFilter): Promise<Attempt[]> {
   if (filter.year) q = q.eq("year", filter.year);
   if (filter.type) q = q.eq("exam_type", filter.type);
 
-  const { data } = await q;
+  // newest first; id breaks ties so pages never overlap or skip a result
+  return q.order("submitted_at", { ascending: false }).order("id", { ascending: true });
+}
+
+export async function listAttempts(filter: AttemptFilter): Promise<Attempt[]> {
+  const { data } = await attemptsQuery(filter);
   return (data ?? []).map(mapAttempt);
+}
+
+/** One page of results, newest first. */
+export async function listAttemptsPage(filter: AttemptFilter, page: number): Promise<Page<Attempt>> {
+  return readPage((from, to) => attemptsQuery(filter, "exact").range(from, to), page, mapAttempt);
 }
 
 /**

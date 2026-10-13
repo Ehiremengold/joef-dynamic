@@ -1,7 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { CLASSES, type Class, type Student, type Subject } from "@/lib/types";
+import Pagination from "./Pagination";
+import { usePagedList } from "./usePagedList";
 
 const YEARS = ["2024", "2025", "2026", "2027"];
 
@@ -19,33 +21,17 @@ export default function RosterPanel({
 }: {
   onUnauthorized: () => void;
 }) {
-  const [students, setStudents] = useState<Student[]>([]);
   const [classes, setClasses] = useState<Class[]>([]);
-  const [loading, setLoading] = useState(true);
   const [name, setName] = useState("");
   const [classFilter, setClassFilter] = useState("");
   const [notice, setNotice] = useState<{ text: string; pin?: string } | null>(null);
   const [subjectsFor, setSubjectsFor] = useState<Student | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (name.trim()) params.set("name", name.trim());
-      if (classFilter) params.set("className", classFilter);
-      const res = await fetch(`/api/students?${params}`);
-      if (res.status === 401) return onUnauthorized();
-      const d = await res.json();
-      setStudents(d.students || []);
-    } finally {
-      setLoading(false);
-    }
-  }, [name, classFilter, onUnauthorized]);
-
-  useEffect(() => {
-    const t = setTimeout(load, 300);
-    return () => clearTimeout(t);
-  }, [load]);
+  const { rows: students, total, page, setPage, loading, reload } = usePagedList<Student>({
+    url: "/api/students",
+    rowsKey: "students",
+    filters: { name: name.trim(), className: classFilter },
+    onUnauthorized,
+  });
 
   useEffect(() => {
     fetch("/api/classes")
@@ -62,7 +48,7 @@ export default function RosterPanel({
       body: JSON.stringify({ id: s.id, action: "set-class", classId }),
     });
     if (res.status === 401) return onUnauthorized();
-    if (res.ok) load();
+    if (res.ok) reload();
   }
 
   async function resetPin(s: Student) {
@@ -85,12 +71,21 @@ export default function RosterPanel({
       body: JSON.stringify({ id: s.id, action: "set-active", active: !s.active }),
     });
     if (res.status === 401) return onUnauthorized();
-    if (res.ok) load();
+    if (res.ok) reload();
   }
 
   return (
     <div className="grid gap-8 xl:grid-cols-[300px_1fr]">
-      <AddStudent onAdded={load} onUnauthorized={onUnauthorized} onPin={setNotice} />
+      {/* The roster is A–Z, so a new student rarely lands on the page in view:
+          search for them, which puts them on screen under their PIN. */}
+      <AddStudent
+        onAdded={(fullName) => {
+          setName(fullName);
+          reload();
+        }}
+        onUnauthorized={onUnauthorized}
+        onPin={setNotice}
+      />
 
       {/* min-w-0 lets the table's overflow-x-auto actually scroll instead of
           stretching the grid column past the viewport on mobile. */}
@@ -137,12 +132,14 @@ export default function RosterPanel({
         </div>
 
         <div className="mt-4 overflow-x-auto rounded-card border border-smoke bg-white">
-          {loading ? (
+          {loading && students.length === 0 ? (
             <p className="p-6 text-sm text-graphite">Loading…</p>
           ) : students.length === 0 ? (
-            <p className="p-6 text-sm text-graphite">No students yet.</p>
+            <p className="p-6 text-sm text-graphite">
+              {name.trim() || classFilter ? "No students match that search." : "No students yet."}
+            </p>
           ) : (
-            <table className="w-full min-w-[640px] text-left text-sm">
+            <table className={`w-full min-w-[640px] text-left text-sm transition-opacity duration-150 ${loading ? "opacity-60" : ""}`}>
               <thead>
                 <tr className="border-b border-smoke text-[13px] uppercase tracking-wide text-pewter">
                   <th className={`whitespace-nowrap ${HEAD}`}>Admission no.</th>
@@ -212,6 +209,7 @@ export default function RosterPanel({
             </table>
           )}
         </div>
+        <Pagination page={page} total={total} onPage={setPage} />
       </div>
 
       {subjectsFor && (
@@ -351,7 +349,7 @@ function AddStudent({
   onUnauthorized,
   onPin,
 }: {
-  onAdded: () => void;
+  onAdded: (fullName: string) => void;
   onUnauthorized: () => void;
   onPin: (n: { text: string; pin: string }) => void;
 }) {
@@ -381,7 +379,7 @@ function AddStudent({
       });
       setAdmissionNumber("");
       setFullName("");
-      onAdded();
+      onAdded(d.student.fullName);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not add student");
     } finally {

@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { pageCount, pageRange } from "@/lib/paging";
 import type { Staff } from "@/lib/types";
+import Pagination from "./Pagination";
 
 export default function TeamPanel({
   currentEmail,
@@ -13,6 +15,7 @@ export default function TeamPanel({
   const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState("");
+  const [page, setPage] = useState(1);
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
@@ -21,11 +24,23 @@ export default function TeamPanel({
       const res = await fetch("/api/staff");
       if (res.status === 401 || res.status === 403) return onUnauthorized();
       const d = await res.json();
-      setStaff(d.staff || []);
+      const list: Staff[] = d.staff || [];
+      setStaff(list);
+      return list;
     } finally {
       setLoading(false);
     }
   }, [onUnauthorized]);
+
+  /** Accounts list oldest-first, so a new one is on the last page — go there. */
+  const showNewest = useCallback(async () => {
+    const list = await load();
+    if (list) setPage(pageCount(list.length));
+  }, [load]);
+
+  // Never past the end, even if the list is shorter than when the page was picked.
+  const shownPage = Math.min(page, pageCount(staff.length));
+  const { from, to } = pageRange(shownPage);
 
   useEffect(() => {
     load();
@@ -65,7 +80,7 @@ export default function TeamPanel({
 
   return (
     <div className="grid gap-8 xl:grid-cols-[300px_1fr]">
-      <AddStaff onAdded={load} onUnauthorized={onUnauthorized} />
+      <AddStaff onAdded={showNewest} onUnauthorized={onUnauthorized} />
 
       {/* min-w-0 lets the table's overflow-x-auto actually scroll instead of
           stretching the grid column past the viewport on mobile. */}
@@ -77,7 +92,7 @@ export default function TeamPanel({
           </p>
         )}
         <div className="mt-4 overflow-x-auto rounded-card border border-smoke bg-white">
-          {loading ? (
+          {loading && staff.length === 0 ? (
             <p className="p-6 text-sm text-graphite">Loading…</p>
           ) : (
             <table className="w-full min-w-[560px] text-left text-sm">
@@ -91,7 +106,7 @@ export default function TeamPanel({
                 </tr>
               </thead>
               <tbody>
-                {staff.map((s) => {
+                {staff.slice(from, to + 1).map((s) => {
                   const isSelf = s.email === currentEmail;
                   return (
                     <tr key={s.id} className="border-b border-smoke last:border-0">
@@ -150,6 +165,7 @@ export default function TeamPanel({
             </table>
           )}
         </div>
+        <Pagination page={shownPage} total={staff.length} onPage={setPage} />
       </div>
     </div>
   );

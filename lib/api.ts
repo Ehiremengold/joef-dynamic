@@ -9,3 +9,9 @@ export function errorResponse(e: unknown): NextResponse {
   const msg = e instanceof Error ? e.message : "Something went wrong";
   return NextResponse.json({ error: msg }, { status: 400 });
 }
+
+/** The 1-based ?page= of a list request; anything missing or silly is page 1. */
+export function pageParam(searchParams: URLSearchParams): number {
+  const page = Number(searchParams.get("page"));
+  return Number.isInteger(page) && page > 0 ? page : 1;
+}

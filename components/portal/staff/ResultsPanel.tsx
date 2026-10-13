@@ -1,7 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { CLASSES, type Attempt } from "@/lib/types";
+import Pagination from "./Pagination";
+import { usePagedList } from "./usePagedList";
 
 const YEARS = ["2024", "2025", "2026", "2027"];
 
@@ -14,40 +16,19 @@ export default function ResultsPanel({
   const [className, setClassName] = useState("");
   const [year, setYear] = useState("");
   const [type, setType] = useState("");
-  const [attempts, setAttempts] = useState<Attempt[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (name.trim()) params.set("name", name.trim());
-      if (className) params.set("className", className);
-      if (year) params.set("year", year);
-      if (type) params.set("type", type);
-      const res = await fetch(`/api/attempts?${params}`);
-      if (res.status === 401) {
-        onUnauthorized();
-        return;
-      }
-      const d = await res.json();
-      setAttempts(d.attempts || []);
-    } finally {
-      setLoading(false);
-    }
-  }, [name, className, year, type, onUnauthorized]);
-
-  useEffect(() => {
-    const t = setTimeout(load, 300);
-    return () => clearTimeout(t);
-  }, [load]);
+  const { rows: attempts, total, page, setPage, loading, reload } = usePagedList<Attempt>({
+    url: "/api/attempts",
+    rowsKey: "attempts",
+    filters: { name: name.trim(), className, year, type },
+    onUnauthorized,
+  });
 
   /** Only for a result whose exam is gone — otherwise it is cleared from that exam's sittings. */
   async function remove(a: Attempt) {
     if (!window.confirm(`Delete ${a.takerName}'s result for "${a.examTitle}"? This cannot be undone.`)) return;
     const res = await fetch(`/api/attempts/${a.id}`, { method: "DELETE" });
     if (res.status === 401) return onUnauthorized();
-    if (res.ok) load();
+    if (res.ok) reload();
   }
 
   return (
@@ -110,12 +91,12 @@ export default function ResultsPanel({
       </div>
 
       <div className="mt-6 overflow-x-auto rounded-card border border-smoke bg-white">
-        {loading ? (
+        {loading && attempts.length === 0 ? (
           <p className="p-6 text-sm text-graphite">Loading results…</p>
         ) : attempts.length === 0 ? (
           <p className="p-6 text-sm text-graphite">No results match these filters.</p>
         ) : (
-          <table className="w-full min-w-[720px] text-left text-sm">
+          <table className={`w-full min-w-[720px] text-left text-sm transition-opacity duration-150 ${loading ? "opacity-60" : ""}`}>
             <thead>
               <tr className="border-b border-smoke text-[13px] uppercase tracking-wide text-pewter">
                 <th className="px-4 py-3 font-semibold">Name</th>
@@ -184,9 +165,7 @@ export default function ResultsPanel({
           </table>
         )}
       </div>
-      <p className="mt-4 text-[13px] text-pewter">
-        {attempts.length} result{attempts.length === 1 ? "" : "s"} shown.
-      </p>
+      <Pagination page={page} total={total} onPage={setPage} />
     </div>
   );
 }

@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { errorResponse } from "@/lib/api";
+import { errorResponse, pageParam } from "@/lib/api";
 import { currentStaff } from "@/lib/auth/staff";
 import { getTakerSession } from "@/lib/auth/session";
 import { getExam, isOpen } from "@/lib/data/exams";
-import { DuplicateAttemptError, listAttempts } from "@/lib/data/attempts";
+import { DuplicateAttemptError, listAttempts, listAttemptsPage } from "@/lib/data/attempts";
 import { getSession, isExpired } from "@/lib/data/attemptSessions";
 import { canSit, finalizeAttempt, submittedResult } from "@/lib/data/submit";
 import type { ExamType } from "@/lib/types";
 
 /**
  * GET /api/attempts
- * - Staff: all attempts, filter by ?name=&className=&year=&type=
+ * - Staff: all attempts, a page at a time; filter by ?name=&className=&year=&type=&page=
  * - Student session: only their OWN attempts (privacy).
  * - Otherwise: 401.
  */
@@ -19,13 +19,16 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const staff = await currentStaff();
     if (staff) {
-      const attempts = await listAttempts({
-        name: searchParams.get("name")?.trim() || undefined,
-        className: searchParams.get("className") || undefined,
-        year: searchParams.get("year")?.trim() || undefined,
-        type: (searchParams.get("type") as ExamType) || undefined,
-      });
-      return NextResponse.json({ attempts });
+      const { rows, total } = await listAttemptsPage(
+        {
+          name: searchParams.get("name")?.trim() || undefined,
+          className: searchParams.get("className") || undefined,
+          year: searchParams.get("year")?.trim() || undefined,
+          type: (searchParams.get("type") as ExamType) || undefined,
+        },
+        pageParam(searchParams)
+      );
+      return NextResponse.json({ attempts: rows, total });
     }
 
     const taker = await getTakerSession();

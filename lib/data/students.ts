@@ -1,7 +1,9 @@
 import "server-only";
 import { serviceClient } from "@/lib/supabase/server";
 import { generatePin, hashPin, verifyPin } from "@/lib/auth/pin";
+import type { Page } from "@/lib/paging";
 import type { ClassName, Student } from "@/lib/types";
+import { readPage } from "./paging";
 
 type Row = Record<string, unknown>;
 
@@ -22,20 +24,26 @@ function mapStudent(r: Row): Student {
   };
 }
 
-export async function listStudents(filter: {
-  name?: string;
-  className?: string;
-  year?: string;
-}): Promise<Student[]> {
-  let q = serviceClient()
-    .from("students")
-    .select("*")
-    .order("created_at", { ascending: false });
-  if (filter.name) q = q.ilike("full_name", `%${filter.name}%`);
-  if (filter.className) q = q.eq("class_name", filter.className);
-  if (filter.year) q = q.eq("entry_year", filter.year);
-  const { data } = await q;
-  return (data ?? []).map(mapStudent);
+/** One page of the roster, A–Z. */
+export async function listStudentsPage(
+  filter: { name?: string; className?: string; year?: string },
+  page: number
+): Promise<Page<Student>> {
+  return readPage(
+    (from, to) => {
+      let q = serviceClient().from("students").select("*", { count: "exact" });
+      if (filter.name) q = q.ilike("full_name", `%${filter.name}%`);
+      if (filter.className) q = q.eq("class_name", filter.className);
+      if (filter.year) q = q.eq("entry_year", filter.year);
+      return q
+        .order("full_name", { ascending: true })
+        // admission numbers are unique, so pages never overlap or skip anyone
+        .order("admission_number", { ascending: true })
+        .range(from, to);
+    },
+    page,
+    mapStudent
+  );
 }
 
 /** Create a student; returns the record plus the plaintext PIN (shown once). */

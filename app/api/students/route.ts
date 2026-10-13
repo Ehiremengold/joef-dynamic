@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { errorResponse } from "@/lib/api";
+import { errorResponse, pageParam } from "@/lib/api";
 import { requireStaff } from "@/lib/auth/staff";
 import {
   assignStudentClass,
   createStudent,
-  listStudents,
+  listStudentsPage,
   resetStudentPin,
   setStudentActive,
   unassignStudentClass,
@@ -12,17 +12,20 @@ import {
 import { getClassById } from "@/lib/data/classes";
 import { CLASSES } from "@/lib/types";
 
-/** GET /api/students — staff list/search the roster. */
+/** GET /api/students — staff list/search the roster, a page at a time (?page=). */
 export async function GET(req: NextRequest) {
   try {
     await requireStaff();
     const { searchParams } = new URL(req.url);
-    const students = await listStudents({
-      name: searchParams.get("name")?.trim() || undefined,
-      className: searchParams.get("className") || undefined,
-      year: searchParams.get("year")?.trim() || undefined,
-    });
-    return NextResponse.json({ students });
+    const { rows, total } = await listStudentsPage(
+      {
+        name: searchParams.get("name")?.trim() || undefined,
+        className: searchParams.get("className") || undefined,
+        year: searchParams.get("year")?.trim() || undefined,
+      },
+      pageParam(searchParams)
+    );
+    return NextResponse.json({ students: rows, total });
   } catch (e) {
     return errorResponse(e);
   }
