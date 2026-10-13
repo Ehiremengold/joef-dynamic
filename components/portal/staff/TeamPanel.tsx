@@ -64,7 +64,7 @@ export default function TeamPanel({
   }
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[380px_1fr]">
+    <div className="grid gap-8 xl:grid-cols-[300px_1fr]">
       <AddStaff onAdded={load} onUnauthorized={onUnauthorized} />
 
       {/* min-w-0 lets the table's overflow-x-auto actually scroll instead of

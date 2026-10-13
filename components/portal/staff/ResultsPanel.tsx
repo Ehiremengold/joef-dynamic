@@ -144,11 +144,11 @@ export default function ResultsPanel({
                       ({a.total ? Math.round((a.score / a.total) * 100) : 0}%)
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-graphite">
+                  <td className="whitespace-nowrap px-4 py-3 text-graphite">
                     {new Date(a.submittedAt).toLocaleString()}
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex flex-wrap gap-3">
+                    <div className="flex gap-3 whitespace-nowrap">
                       <a
                         href={`/api/attempts/${a.id}/pdf`}
                         target="_blank"

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import ScrollProgress from "./fx/ScrollProgress";
+import { PAGE_WIDTH } from "./pageWidth";
 
 const links = [
   { label: "Stages", href: "/#stages" },
@@ -15,13 +16,14 @@ const links = [
   { label: "Visit", href: "/#visit" },
 ];
 
-export default function Nav() {
+/** `wide` matches the staff section's wider column so the edges line up. */
+export default function Nav({ wide = false }: { wide?: boolean }) {
   const [open, setOpen] = useState(false);
 
   return (
     <header className="sticky top-0 z-40 border-b border-hairline bg-white/90 backdrop-blur-xl">
       <ScrollProgress />
-      <div className="mx-auto flex h-14 max-w-[1200px] items-center justify-between px-6">
+      <div className={`mx-auto flex h-14 items-center justify-between px-6 ${wide ? PAGE_WIDTH.wide : PAGE_WIDTH.standard}`}>
         <Link href="/" className="flex items-center gap-2.5">
           <Image
             src="/images/logo.png"

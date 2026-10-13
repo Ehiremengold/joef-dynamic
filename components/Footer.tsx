@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { PAGE_WIDTH } from "./pageWidth";
 
 const columns = [
   {
@@ -52,10 +53,10 @@ const socials = [
   },
 ];
 
-export default function Footer() {
+export default function Footer({ wide = false }: { wide?: boolean }) {
   return (
     <footer className="bg-brand-navy text-white">
-      <div className="mx-auto max-w-[1200px] px-6 py-16">
+      <div className={`mx-auto px-6 py-16 ${wide ? PAGE_WIDTH.wide : PAGE_WIDTH.standard}`}>
         <div className="grid gap-12 md:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr]">
           <div>
             <div className="flex items-center gap-2.5">

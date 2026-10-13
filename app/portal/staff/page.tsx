@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
+import { PAGE_WIDTH } from "@/components/pageWidth";
 import { browserClient } from "@/lib/supabase/browser";
 import ExamsPanel from "@/components/portal/staff/ExamsPanel";
 import ResultsPanel from "@/components/portal/staff/ResultsPanel";
@@ -58,10 +59,10 @@ export default function StaffPage() {
 
   return (
     <>
-      <Nav />
+      <Nav wide />
       <main className="min-h-[70vh] bg-mist">
         <section className="bg-brand-navy text-white">
-          <div className="mx-auto max-w-[1200px] px-4 py-10">
+          <div className={`mx-auto px-6 py-10 ${PAGE_WIDTH.wide}`}>
             <div className="flex flex-wrap items-end justify-between gap-4">
               <div>
                 <Link href="/portal" className="text-sm text-white/70 transition-colors duration-200 hover:text-brand-gold">
@@ -109,7 +110,7 @@ export default function StaffPage() {
           </div>
         </section>
 
-        <section className="mx-auto max-w-[1200px] px-4 py-10">
+        <section className={`mx-auto px-6 py-10 ${PAGE_WIDTH.wide}`}>
           {loading ? (
             <p className="text-sm text-graphite">Loading…</p>
           ) : !me ? (
@@ -129,7 +130,7 @@ export default function StaffPage() {
           )}
         </section>
       </main>
-      <Footer />
+      <Footer wide />
     </>
   );
 }

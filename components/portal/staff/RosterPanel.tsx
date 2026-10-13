@@ -5,6 +5,11 @@ import { CLASSES, type Class, type Student, type Subject } from "@/lib/types";
 
 const YEARS = ["2024", "2025", "2026", "2027"];
 
+// Tighter than the other staff tables, because this one has the most columns.
+// The outer cells keep a 16px inset from the card's rounded corners.
+const HEAD = "px-3 py-3 font-semibold first:pl-4 last:pr-4";
+const CELL = "px-3 py-2.5 first:pl-4 last:pr-4";
+
 function classLabel(c: Class): string {
   return `${c.campusName ?? "Campus"} · ${c.level}${c.arm ? c.arm : ""}`;
 }
@@ -84,7 +89,7 @@ export default function RosterPanel({
   }
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[380px_1fr]">
+    <div className="grid gap-8 xl:grid-cols-[300px_1fr]">
       <AddStudent onAdded={load} onUnauthorized={onUnauthorized} onPin={setNotice} />
 
       {/* min-w-0 lets the table's overflow-x-auto actually scroll instead of
@@ -135,25 +140,25 @@ export default function RosterPanel({
           {loading ? (
             <p className="p-6 text-sm text-graphite">Loading…</p>
           ) : students.length === 0 ? (
-            <p className="p-6 text-sm text-graphite">No students yet — add one on the left.</p>
+            <p className="p-6 text-sm text-graphite">No students yet.</p>
           ) : (
             <table className="w-full min-w-[640px] text-left text-sm">
               <thead>
                 <tr className="border-b border-smoke text-[13px] uppercase tracking-wide text-pewter">
-                  <th className="px-4 py-3 font-semibold">Admission no.</th>
-                  <th className="px-4 py-3 font-semibold">Name</th>
-                  <th className="px-4 py-3 font-semibold">Class</th>
-                  <th className="px-4 py-3 font-semibold">Year</th>
-                  <th className="px-4 py-3 font-semibold">Status</th>
-                  <th className="px-4 py-3 font-semibold">Actions</th>
+                  <th className={`whitespace-nowrap ${HEAD}`}>Admission no.</th>
+                  <th className={HEAD}>Name</th>
+                  <th className={HEAD}>Class</th>
+                  <th className={HEAD}>Year</th>
+                  <th className={HEAD}>Status</th>
+                  <th className={HEAD}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {students.map((s) => (
                   <tr key={s.id} className="border-b border-smoke last:border-0">
-                    <td className="px-4 py-3 font-mono text-[13px]">{s.admissionNumber}</td>
-                    <td className="px-4 py-3 font-semibold">{s.fullName}</td>
-                    <td className="px-4 py-3">
+                    <td className={`whitespace-nowrap font-mono text-[13px] ${CELL}`}>{s.admissionNumber}</td>
+                    <td className={`font-semibold ${CELL}`}>{s.fullName}</td>
+                    <td className={CELL}>
                       <select
                         value={s.classId ?? ""}
                         onChange={(e) => assignClass(s, e.target.value)}
@@ -166,16 +171,16 @@ export default function RosterPanel({
                         ))}
                       </select>
                     </td>
-                    <td className="px-4 py-3">{s.entryYear}</td>
-                    <td className="px-4 py-3">
+                    <td className={CELL}>{s.entryYear}</td>
+                    <td className={CELL}>
                       {s.active ? (
                         <span className="text-brand-green">Active</span>
                       ) : (
                         <span className="text-pewter">Inactive</span>
                       )}
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex gap-3">
+                    <td className={CELL}>
+                      <div className="flex gap-3 whitespace-nowrap">
                         <button
                           type="button"
                           onClick={() => resetPin(s)}
