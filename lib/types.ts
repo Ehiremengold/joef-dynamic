@@ -40,7 +40,8 @@ export type PublicExam = Omit<Exam, "questions"> & {
 
 export type Attempt = {
   id: string;
-  examId: string;
+  /** Null once the exam has been deleted — the result itself is kept. */
+  examId: string | null;
   examTitle: string;
   examType: ExamType;
   takerType: TakerType;

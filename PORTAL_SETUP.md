@@ -17,8 +17,8 @@ The public site and the portal are one Next.js app. The portal is served from th
 In the Supabase dashboard → **SQL Editor**, run each file in order:
 
 1. `supabase/migrations/0001_init.sql` — when prompted, choose **"Run and enable RLS"**
-2. `supabase/migrations/0002_policies.sql` through `0009_whole_school_records.sql`, in
-   numeric order
+2. every other file in `supabase/migrations/`, in numeric order (`0002_…` up to the
+   highest number)
 
 (Or, with the Supabase CLI: `supabase link` then `supabase db push`.)
 

@@ -42,6 +42,14 @@ export default function ResultsPanel({
     return () => clearTimeout(t);
   }, [load]);
 
+  /** Only for a result whose exam is gone — otherwise it is cleared from that exam's sittings. */
+  async function remove(a: Attempt) {
+    if (!window.confirm(`Delete ${a.takerName}'s result for "${a.examTitle}"? This cannot be undone.`)) return;
+    const res = await fetch(`/api/attempts/${a.id}`, { method: "DELETE" });
+    if (res.status === 401) return onUnauthorized();
+    if (res.ok) load();
+  }
+
   return (
     <div>
       <div className="rounded-card border border-smoke bg-white p-5">
@@ -117,7 +125,7 @@ export default function ResultsPanel({
                 <th className="px-4 py-3 font-semibold">Year</th>
                 <th className="px-4 py-3 font-semibold">Score</th>
                 <th className="px-4 py-3 font-semibold">Date</th>
-                <th className="px-4 py-3 font-semibold">Download</th>
+                <th className="px-4 py-3 font-semibold">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -158,6 +166,15 @@ export default function ResultsPanel({
                         >
                           Transcript
                         </a>
+                      )}
+                      {a.examId === null && (
+                        <button
+                          type="button"
+                          onClick={() => remove(a)}
+                          className="cursor-pointer text-[13px] font-semibold text-graphite hover:underline"
+                        >
+                          Delete
+                        </button>
                       )}
                     </div>
                   </td>

@@ -7,7 +7,7 @@ type Row = Record<string, unknown>;
 function mapAttempt(r: Row): Attempt {
   return {
     id: r.id as string,
-    examId: r.exam_id as string,
+    examId: (r.exam_id as string | null) ?? null,
     examTitle: r.exam_title as string,
     examType: r.exam_type as ExamType,
     takerType: r.taker_type as TakerType,
