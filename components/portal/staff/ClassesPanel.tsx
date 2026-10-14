@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { CLASSES, type Campus, type Class, type ClassSubject, type Staff, type Subject } from "@/lib/types";
+import { useConfirm } from "./useConfirm";
 
 const DEPARTMENTS = [
   { value: "", label: "Core / general" },
@@ -77,6 +78,7 @@ function CampusesSection({
   onUnauthorized: () => void;
   setError: (s: string) => void;
 }) {
+  const { confirm, dialog } = useConfirm();
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -103,7 +105,13 @@ function CampusesSection({
   }
 
   async function remove(c: Campus) {
-    if (!window.confirm(`Remove ${c.name} campus? This also removes its classes.`)) return;
+    const ok = await confirm({
+      title: `Remove the ${c.name} campus?`,
+      message: "Its classes are removed with it.",
+      confirmLabel: "Remove campus",
+      danger: true,
+    });
+    if (!ok) return;
     const res = await fetch(`/api/campuses/${c.id}`, { method: "DELETE" });
     if (res.status === 401 || res.status === 403) return onUnauthorized();
     if (res.ok) onChanged();
@@ -111,6 +119,7 @@ function CampusesSection({
 
   return (
     <section>
+      {dialog}
       <h2 className="font-display text-xl font-bold tracking-tight">Campuses</h2>
       <div className="mt-3 flex flex-wrap gap-2">
         {campuses.map((c) => (
@@ -162,6 +171,7 @@ function SubjectsSection({
   onUnauthorized: () => void;
   setError: (s: string) => void;
 }) {
+  const { confirm, dialog } = useConfirm();
   const [name, setName] = useState("");
   const [department, setDepartment] = useState("");
   const [busy, setBusy] = useState(false);
@@ -190,7 +200,13 @@ function SubjectsSection({
   }
 
   async function remove(s: Subject) {
-    if (!window.confirm(`Remove ${s.name} from the subject catalog?`)) return;
+    const ok = await confirm({
+      title: `Remove ${s.name}?`,
+      message: "It comes off the subject catalog and every class that offers it.",
+      confirmLabel: "Remove subject",
+      danger: true,
+    });
+    if (!ok) return;
     const res = await fetch(`/api/subjects/${s.id}`, { method: "DELETE" });
     if (res.status === 401 || res.status === 403) return onUnauthorized();
     if (res.ok) onChanged();
@@ -198,6 +214,7 @@ function SubjectsSection({
 
   return (
     <section>
+      {dialog}
       <h2 className="font-display text-xl font-bold tracking-tight">Subject catalog</h2>
       <p className="mt-1 text-[13px] text-pewter">
         Senior secondary science, art and commercial subjects all live here — tag each with its
@@ -269,6 +286,7 @@ function ClassesSection({
   onUnauthorized: () => void;
   setError: (s: string) => void;
 }) {
+  const { confirm, dialog } = useConfirm();
   const [campusId, setCampusId] = useState("");
   const [level, setLevel] = useState<string>(CLASSES[0]);
   const [arm, setArm] = useState("");
@@ -298,7 +316,13 @@ function ClassesSection({
   }
 
   async function remove(c: Class) {
-    if (!window.confirm(`Remove ${c.level}${c.arm ?? ""}? Students keep their old class name but lose this assignment.`)) return;
+    const ok = await confirm({
+      title: `Remove ${c.level}${c.arm ?? ""}?`,
+      message: "Students keep their old class name but lose this assignment.",
+      confirmLabel: "Remove class",
+      danger: true,
+    });
+    if (!ok) return;
     const res = await fetch(`/api/classes/${c.id}`, { method: "DELETE" });
     if (res.status === 401 || res.status === 403) return onUnauthorized();
     if (res.ok) onChanged();
@@ -316,6 +340,7 @@ function ClassesSection({
 
   return (
     <section>
+      {dialog}
       <h2 className="font-display text-xl font-bold tracking-tight">Classes &amp; arms</h2>
       <p className="mt-1 text-[13px] text-pewter">
         Add arms freely per campus — Ikoyi can run several arms per level, Obalende can run one.

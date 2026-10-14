@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { CLASSES, type Class, type Student, type Subject } from "@/lib/types";
 import Pagination from "./Pagination";
 import { usePagedList } from "./usePagedList";
+import { useConfirm } from "./useConfirm";
 
 const YEARS = ["2024", "2025", "2026", "2027"];
 
@@ -21,6 +22,7 @@ export default function RosterPanel({
 }: {
   onUnauthorized: () => void;
 }) {
+  const { confirm, dialog } = useConfirm();
   const [classes, setClasses] = useState<Class[]>([]);
   const [name, setName] = useState("");
   const [classFilter, setClassFilter] = useState("");
@@ -52,7 +54,12 @@ export default function RosterPanel({
   }
 
   async function resetPin(s: Student) {
-    if (!window.confirm(`Reset ${s.fullName}'s PIN? Their old PIN stops working.`)) return;
+    const ok = await confirm({
+      title: `Reset ${s.fullName}'s PIN?`,
+      message: "Their old PIN stops working straight away, and you'll be shown the new one once.",
+      confirmLabel: "Reset PIN",
+    });
+    if (!ok) return;
     const res = await fetch("/api/students", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -78,6 +85,7 @@ export default function RosterPanel({
   // 1290px wide); below that the form goes on top and the table takes the row.
   return (
     <div className="grid gap-8 min-[1340px]:grid-cols-[300px_1fr]">
+      {dialog}
       {/* The roster is A–Z, so a new student rarely lands on the page in view:
           search for them, which puts them on screen under their PIN. */}
       <AddStudent

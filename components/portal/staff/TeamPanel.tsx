@@ -5,6 +5,7 @@ import { pageCount, pageRange } from "@/lib/paging";
 import { isSuperAdmin, ROLE_LABELS } from "@/lib/roles";
 import type { SignedInStaff, Staff, StaffRole } from "@/lib/types";
 import Pagination from "./Pagination";
+import { useConfirm } from "./useConfirm";
 
 export default function TeamPanel({
   me,
@@ -13,6 +14,7 @@ export default function TeamPanel({
   me: SignedInStaff;
   onUnauthorized: () => void;
 }) {
+  const { confirm, dialog } = useConfirm();
   const currentEmail = me.email;
   // Only a super admin can make a super admin, or change one's account.
   const roleChoices: StaffRole[] = isSuperAdmin(me.role) ? ["teacher", "admin", "super_admin"] : ["teacher", "admin"];
@@ -71,21 +73,25 @@ export default function TeamPanel({
     }
   }
 
-  function changeRole(s: Staff, role: Staff["role"]) {
+  async function changeRole(s: Staff, role: Staff["role"]) {
     if (role === s.role) return;
-    const ok = window.confirm(
-      role === "super_admin"
-        ? `Make ${s.fullName} a super admin? They will be able to approve deletions and manage other super admins.`
-        : role === "admin"
-          ? `Make ${s.fullName} an administrator? They will be able to manage staff, students and exams.`
-          : `Make ${s.fullName} a teacher? They will lose admin rights.`
-    );
+    const ok = await confirm({
+      title: `Make ${s.fullName} ${role === "admin" ? "an administrator" : role === "super_admin" ? "a super admin" : "a teacher"}?`,
+      message:
+        role === "super_admin"
+          ? "They will be able to approve deletions and manage other super admins."
+          : role === "admin"
+            ? "They will be able to manage staff, students and exams."
+            : "They will lose admin rights.",
+      confirmLabel: "Change role",
+    });
     if (!ok) return;
     patch(s, { role });
   }
 
   return (
     <div className="grid gap-8 xl:grid-cols-[300px_1fr]">
+      {dialog}
       <AddStaff roleChoices={roleChoices} onAdded={showNewest} onUnauthorized={onUnauthorized} />
 
       {/* min-w-0 lets the table's overflow-x-auto actually scroll instead of

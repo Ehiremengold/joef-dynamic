@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { isSuperAdmin } from "@/lib/roles";
 import type { SignedInStaff } from "@/lib/types";
+import { useConfirm } from "./useConfirm";
 
 type DeletionRequest = {
   id: string;
@@ -36,6 +37,7 @@ export default function ApprovalsPanel({
   onDecided: () => void;
   onUnauthorized: () => void;
 }) {
+  const { confirm, dialog } = useConfirm();
   const [requests, setRequests] = useState<DeletionRequest[]>([]);
   const [busyId, setBusyId] = useState("");
   const [error, setError] = useState("");
@@ -53,7 +55,16 @@ export default function ApprovalsPanel({
 
   async function decide(r: DeletionRequest, approve: boolean) {
     const what = r.questionText ? `this question from "${r.examTitle}"` : `the exam "${r.examTitle}" and all its questions`;
-    if (approve && !window.confirm(`Delete ${what}? This cannot be undone.`)) return;
+    if (
+      approve &&
+      !(await confirm({
+        title: "Approve this deletion?",
+        message: `${what[0].toUpperCase()}${what.slice(1)} will be deleted straight away. This can’t be undone.`,
+        confirmLabel: "Approve and delete",
+        danger: true,
+      }))
+    )
+      return;
     setBusyId(r.id);
     setError("");
     try {
@@ -79,6 +90,7 @@ export default function ApprovalsPanel({
 
   return (
     <section className="rounded-card border border-smoke bg-white p-6">
+      {dialog}
       <h2 className="font-display text-xl font-bold tracking-tight">
         {canDecide ? "Deletion requests" : "Your deletion requests"}
         {pending > 0 && (

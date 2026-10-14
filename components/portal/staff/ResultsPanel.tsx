@@ -5,6 +5,7 @@ import { isSuperAdmin } from "@/lib/roles";
 import { CLASSES, type Attempt, type SignedInStaff } from "@/lib/types";
 import Pagination from "./Pagination";
 import { usePagedList } from "./usePagedList";
+import { useConfirm } from "./useConfirm";
 
 const YEARS = ["2024", "2025", "2026", "2027"];
 
@@ -15,6 +16,7 @@ export default function ResultsPanel({
   me: SignedInStaff;
   onUnauthorized: () => void;
 }) {
+  const { confirm, dialog } = useConfirm();
   const [name, setName] = useState("");
   const [className, setClassName] = useState("");
   const [year, setYear] = useState("");
@@ -28,7 +30,13 @@ export default function ResultsPanel({
 
   /** Super admins only, for a result whose exam is gone — otherwise it is cleared from that exam's sittings. */
   async function remove(a: Attempt) {
-    if (!window.confirm(`Delete ${a.takerName}'s result for "${a.examTitle}"? This cannot be undone.`)) return;
+    const ok = await confirm({
+      title: `Delete ${a.takerName}'s result?`,
+      message: `Their ${a.score}/${a.total} for “${a.examTitle}” is deleted for good.`,
+      confirmLabel: "Delete result",
+      danger: true,
+    });
+    if (!ok) return;
     const res = await fetch(`/api/attempts/${a.id}`, { method: "DELETE" });
     if (res.status === 401) return onUnauthorized();
     if (res.ok) reload();
@@ -36,6 +44,7 @@ export default function ResultsPanel({
 
   return (
     <div>
+      {dialog}
       <div className="rounded-card border border-smoke bg-white p-5">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>

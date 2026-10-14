@@ -5,6 +5,7 @@ import { parseQuestions } from "@/lib/questionParser";
 import { examAccess, isAdmin, type ExamAccess } from "@/lib/roles";
 import { CLASSES, type Exam, type SignedInStaff } from "@/lib/types";
 import ApprovalsPanel from "./ApprovalsPanel";
+import { useConfirm } from "./useConfirm";
 import EntranceAccess from "./EntranceAccess";
 
 /** Cookie-authenticated fetch; calls onUnauthorized on a 401 so the shell re-checks. */
@@ -205,12 +206,19 @@ function ExamCard({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const { confirm, dialog } = useConfirm();
 
   /** Ask a super admin to delete this exam (no question) or one of its questions. */
   async function requestDeletion(questionIndex?: number) {
     const what = questionIndex === undefined ? `the exam "${exam.title}"` : `question ${questionIndex + 1}`;
-    const reason = window.prompt(`Why should ${what} be deleted? A super admin will review your request.`);
-    if (!reason?.trim()) return;
+    const answer = await confirm({
+      title: questionIndex === undefined ? "Request deletion of this exam?" : `Request removal of question ${questionIndex + 1}?`,
+      message: `It isn't yours, so a super admin will review your request before ${what} is deleted.`,
+      confirmLabel: "Send request",
+      reason: { label: "Why should it be deleted?", placeholder: "e.g. duplicate of question 3" },
+    });
+    if (!answer) return;
+    const reason = answer.reason;
     setError("");
     setNotice("");
     const res = await authFetch("/api/deletion-requests", {
@@ -246,7 +254,13 @@ function ExamCard({
   }
 
   async function remove() {
-    if (!window.confirm(`Delete "${exam.title}" and its questions? Results already taken are kept.`)) return;
+    const ok = await confirm({
+      title: `Delete “${exam.title}”?`,
+      message: `Its ${exam.questions.length} question${exam.questions.length === 1 ? "" : "s"} go with it. Results students have already got are kept.`,
+      confirmLabel: "Delete exam",
+      danger: true,
+    });
+    if (!ok) return;
     setBusy(true);
     try {
       await authFetch(`/api/exams/${exam.id}`, { method: "DELETE" });
@@ -258,6 +272,7 @@ function ExamCard({
 
   return (
     <div className="rounded-card border border-smoke bg-white">
+      {dialog}
       <div className="flex flex-wrap items-center gap-3 p-5">
         <span
           className={`rounded-btn px-2 py-0.5 text-xs font-bold uppercase tracking-wide ${
@@ -373,6 +388,7 @@ function SittingsPanel({ exam, authFetch, access }: { exam: Exam; authFetch: Aut
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState("");
   const [error, setError] = useState("");
+  const { confirm, dialog } = useConfirm();
 
   const reload = useCallback(async () => {
     try {
@@ -412,9 +428,12 @@ function SittingsPanel({ exam, authFetch, access }: { exam: Exam; authFetch: Aut
   }
 
   async function allowRetake(attempt: Submitted) {
-    const ok = window.confirm(
-      `Delete ${attempt.takerName}'s score of ${attempt.score}/${attempt.total} so they can sit "${exam.title}" again? This cannot be undone.`
-    );
+    const ok = await confirm({
+      title: `Allow ${attempt.takerName} a retake?`,
+      message: `Their score of ${attempt.score}/${attempt.total} on “${exam.title}” is deleted so they can sit it again. This can’t be undone.`,
+      confirmLabel: "Delete score and allow retake",
+      danger: true,
+    });
     if (!ok) return;
     setBusyId(attempt.id);
     setError("");
@@ -434,6 +453,7 @@ function SittingsPanel({ exam, authFetch, access }: { exam: Exam; authFetch: Aut
 
   return (
     <div className="border-t border-smoke p-5">
+      {dialog}
       {error && <p className="mb-3 text-sm font-semibold text-brand-red">{error}</p>}
 
       <p className="font-display text-sm font-bold tracking-tight">Taking it now</p>
@@ -519,6 +539,107 @@ function SittingsPanel({ exam, authFetch, access }: { exam: Exam; authFetch: Aut
   );
 }
 
+type QuestionDraft = Omit<Exam["questions"][number], "id" | "position">;
+
+/** The question form, for adding a question or editing one. Empty options are dropped on save. */
+function QuestionForm({
+  name,
+  initial,
+  title,
+  submitLabel,
+  busy,
+  onSubmit,
+  onCancel,
+}: {
+  name: string;
+  initial?: QuestionDraft;
+  title: string;
+  submitLabel: string;
+  busy: boolean;
+  /** Resolves to whether it was saved; the form clears itself after a saved add. */
+  onSubmit: (q: QuestionDraft) => Promise<boolean>;
+  onCancel?: () => void;
+}) {
+  const blankOptions = () => {
+    const opts = [...(initial?.options ?? [])];
+    while (opts.length < 4) opts.push("");
+    return opts;
+  };
+  const [text, setText] = useState(initial?.text ?? "");
+  const [options, setOptions] = useState(blankOptions);
+  const [correctIndex, setCorrectIndex] = useState(initial?.correctIndex ?? 0);
+  const [formError, setFormError] = useState("");
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    const filled = options.map((o) => o.trim()).filter(Boolean);
+    if (!text.trim() || filled.length < 2) return setFormError("Enter the question and at least two options");
+    if (!options[correctIndex]?.trim()) return setFormError("The correct answer can't be an empty option");
+    const kept = options.map((o, i) => ({ o: o.trim(), i })).filter(({ o }) => o);
+    setFormError("");
+    const saved = await onSubmit({
+      text: text.trim(),
+      options: kept.map(({ o }) => o),
+      correctIndex: kept.findIndex(({ i }) => i === correctIndex),
+    });
+    if (saved && !initial) {
+      setText("");
+      setOptions(["", "", "", ""]);
+      setCorrectIndex(0);
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="mt-3 rounded-btn border border-dashed border-pewter/50 bg-white p-4">
+      <p className="font-display text-sm font-bold tracking-tight">{title}</p>
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder="Question text…"
+        rows={2}
+        className="mt-3 w-full rounded-btn border border-smoke px-3 py-2.5 text-sm outline-none focus:border-brand-navy"
+      />
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        {options.map((opt, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <input
+              type="radio"
+              name={`correct-${name}`}
+              checked={correctIndex === i}
+              onChange={() => setCorrectIndex(i)}
+              aria-label={`Mark option ${String.fromCharCode(65 + i)} as correct`}
+              className="h-4 w-4 shrink-0 cursor-pointer accent-brand-green"
+            />
+            <input
+              type="text"
+              value={opt}
+              onChange={(e) => setOptions((prev) => prev.map((o, j) => (j === i ? e.target.value : o)))}
+              placeholder={`Option ${String.fromCharCode(65 + i)}`}
+              className="w-full rounded-btn border border-smoke px-3 py-2 text-sm outline-none focus:border-brand-navy"
+            />
+          </div>
+        ))}
+      </div>
+      <p className="mt-2 text-[13px] text-pewter">Tick the radio next to the correct answer.</p>
+      {formError && <p className="mt-2 text-sm font-semibold text-brand-red" role="alert">{formError}</p>}
+      <div className="mt-3 flex gap-3">
+        <button
+          type="submit"
+          disabled={busy}
+          className="cursor-pointer rounded-btn bg-brand-navy px-5 py-2.5 text-sm font-semibold text-white transition-colors duration-200 hover:bg-ink disabled:opacity-60"
+        >
+          {busy ? "Saving…" : submitLabel}
+        </button>
+        {onCancel && (
+          <button type="button" onClick={onCancel} className="cursor-pointer rounded-btn px-4 py-2.5 text-sm font-semibold text-graphite hover:text-ink">
+            Cancel
+          </button>
+        )}
+      </div>
+    </form>
+  );
+}
+
 function QuestionEditor({
   exam,
   busy,
@@ -533,75 +654,90 @@ function QuestionEditor({
   onRequestRemoval: (questionIndex: number) => void;
 }) {
   const [mode, setMode] = useState<"paste" | "one">("paste");
-  const [text, setText] = useState("");
-  const [options, setOptions] = useState(["", "", "", ""]);
-  const [correctIndex, setCorrectIndex] = useState(0);
-  const [formError, setFormError] = useState("");
+  const [editing, setEditing] = useState<number | null>(null);
+  const { confirm, dialog } = useConfirm();
 
-  function addQuestion(e: React.FormEvent) {
-    e.preventDefault();
-    const filled = options.map((o) => o.trim()).filter(Boolean);
-    if (!text.trim() || filled.length < 2) {
-      setFormError("Enter the question and at least two options");
-      return;
-    }
-    if (!options[correctIndex]?.trim()) {
-      setFormError("The correct answer can't be an empty option");
-      return;
-    }
-    const kept = options.map((o, i) => ({ o: o.trim(), i })).filter(({ o }) => o);
-    const newCorrect = kept.findIndex(({ i }) => i === correctIndex);
-    setFormError("");
-    onSave([
-      ...exam.questions,
-      {
-        id: "",
-        text: text.trim(),
-        options: kept.map(({ o }) => o),
-        correctIndex: newCorrect,
-        position: exam.questions.length,
-      },
-    ]);
-    setText("");
-    setOptions(["", "", "", ""]);
-    setCorrectIndex(0);
+  async function removeQuestion(qi: number) {
+    const ok = await confirm({
+      title: `Remove question ${qi + 1}?`,
+      message: <>“{exam.questions[qi].text}” will be removed from {exam.title}. This can’t be undone.</>,
+      confirmLabel: "Remove question",
+      danger: true,
+    });
+    if (ok) await onSave(exam.questions.filter((_, x) => x !== qi));
+  }
+
+  async function saveEdit(qi: number, q: QuestionDraft): Promise<boolean> {
+    const ok = await confirm({
+      title: `Save changes to question ${qi + 1}?`,
+      message: "Students who have already sat this test keep the score they got.",
+      confirmLabel: "Save changes",
+    });
+    if (!ok) return false;
+    const saved = await onSave(exam.questions.map((old, x) => (x === qi ? { ...old, ...q } : old)));
+    if (saved) setEditing(null);
+    return saved;
   }
 
   return (
     <div className="border-t border-smoke p-5">
+      {dialog}
       {exam.questions.length > 0 && (
         <ol className="space-y-3">
-          {exam.questions.map((q, qi) => (
-            <li key={q.id || qi} className="rounded-btn bg-mist p-4">
-              <div className="flex items-start justify-between gap-3">
-                <p className="text-sm font-semibold">
-                  <span className="mr-2 text-pewter">{qi + 1}.</span>
-                  {q.text}
-                </p>
-                {access !== "view" && (
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() =>
-                      access === "manage" ? onSave(exam.questions.filter((_, x) => x !== qi)) : onRequestRemoval(qi)
-                    }
-                    aria-label={`${access === "manage" ? "Remove" : "Request removal of"} question ${qi + 1}`}
-                    className="cursor-pointer text-sm font-semibold text-brand-red hover:underline"
-                  >
-                    {access === "manage" ? "Remove" : "Request removal"}
-                  </button>
-                )}
-              </div>
-              <ul className="mt-2 space-y-1 text-sm text-graphite">
-                {q.options.map((opt, oi) => (
-                  <li key={oi} className={oi === q.correctIndex ? "font-bold text-brand-green" : ""}>
-                    {String.fromCharCode(65 + oi)}. {opt}
-                    {oi === q.correctIndex ? " (correct)" : ""}
-                  </li>
-                ))}
-              </ul>
-            </li>
-          ))}
+          {exam.questions.map((q, qi) =>
+            editing === qi ? (
+              <li key={q.id || qi}>
+                <QuestionForm
+                  name={`${exam.id}-${qi}`}
+                  initial={q}
+                  title={`Edit question ${qi + 1}`}
+                  submitLabel="Save changes"
+                  busy={busy}
+                  onSubmit={(draft) => saveEdit(qi, draft)}
+                  onCancel={() => setEditing(null)}
+                />
+              </li>
+            ) : (
+              <li key={q.id || qi} className="rounded-btn bg-mist p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <p className="text-sm font-semibold">
+                    <span className="mr-2 text-pewter">{qi + 1}.</span>
+                    {q.text}
+                  </p>
+                  {access !== "view" && (
+                    <div className="flex shrink-0 gap-3">
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => setEditing(qi)}
+                        aria-label={`Edit question ${qi + 1}`}
+                        className="cursor-pointer text-sm font-semibold text-brand-navy hover:underline"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => (access === "manage" ? removeQuestion(qi) : onRequestRemoval(qi))}
+                        aria-label={`${access === "manage" ? "Remove" : "Request removal of"} question ${qi + 1}`}
+                        className="cursor-pointer text-sm font-semibold text-brand-red hover:underline"
+                      >
+                        {access === "manage" ? "Remove" : "Request removal"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <ul className="mt-2 space-y-1 text-sm text-graphite">
+                  {q.options.map((opt, oi) => (
+                    <li key={oi} className={oi === q.correctIndex ? "font-bold text-brand-green" : ""}>
+                      {String.fromCharCode(65 + oi)}. {opt}
+                      {oi === q.correctIndex ? " (correct)" : ""}
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            )
+          )}
         </ol>
       )}
 
@@ -610,76 +746,39 @@ function QuestionEditor({
           {exam.questions.length === 0 ? "No questions yet. " : ""}This exam belongs to another teacher, so you can view it but not change it.
         </p>
       ) : (
-      <>
-      <div className="mt-5 flex gap-2">
-        {(
-          [
-            ["paste", "Paste questions"],
-            ["one", "Add one question"],
-          ] as const
-        ).map(([key, label]) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => setMode(key)}
-            className={`cursor-pointer rounded-btn px-4 py-2 text-sm font-semibold ${
-              mode === key ? "bg-brand-navy text-white" : "border border-smoke bg-white text-ink hover:border-brand-navy"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+        <>
+          <div className="mt-5 flex gap-2">
+            {(
+              [
+                ["paste", "Paste questions"],
+                ["one", "Add one question"],
+              ] as const
+            ).map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setMode(key)}
+                className={`cursor-pointer rounded-btn px-4 py-2 text-sm font-semibold ${
+                  mode === key ? "bg-brand-navy text-white" : "border border-smoke bg-white text-ink hover:border-brand-navy"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
 
-      {mode === "paste" ? (
-        <PasteQuestions exam={exam} busy={busy} onSave={onSave} />
-      ) : (
-      <form onSubmit={addQuestion} className="mt-3 rounded-btn border border-dashed border-pewter/50 p-4">
-        <p className="font-display text-sm font-bold tracking-tight">Add a question</p>
-        <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="Question text…"
-          rows={2}
-          className="mt-3 w-full rounded-btn border border-smoke px-3 py-2.5 text-sm outline-none focus:border-brand-navy"
-        />
-        <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          {options.map((opt, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <input
-                type="radio"
-                name={`correct-${exam.id}`}
-                checked={correctIndex === i}
-                onChange={() => setCorrectIndex(i)}
-                aria-label={`Mark option ${String.fromCharCode(65 + i)} as correct`}
-                className="h-4 w-4 shrink-0 cursor-pointer accent-brand-green"
-              />
-              <input
-                type="text"
-                value={opt}
-                onChange={(e) =>
-                  setOptions((prev) => prev.map((o, j) => (j === i ? e.target.value : o)))
-                }
-                placeholder={`Option ${String.fromCharCode(65 + i)}`}
-                className="w-full rounded-btn border border-smoke px-3 py-2 text-sm outline-none focus:border-brand-navy"
-              />
-            </div>
-          ))}
-        </div>
-        <p className="mt-2 text-[13px] text-pewter">Tick the radio next to the correct answer.</p>
-        {formError && (
-          <p className="mt-2 text-sm font-semibold text-brand-red" role="alert">{formError}</p>
-        )}
-        <button
-          type="submit"
-          disabled={busy}
-          className="mt-3 cursor-pointer rounded-btn bg-brand-navy px-5 py-2.5 text-sm font-semibold text-white transition-colors duration-200 hover:bg-ink disabled:opacity-60"
-        >
-          {busy ? "Saving…" : "Add question"}
-        </button>
-      </form>
-      )}
-      </>
+          {mode === "paste" ? (
+            <PasteQuestions exam={exam} busy={busy} onSave={onSave} />
+          ) : (
+            <QuestionForm
+              name={`${exam.id}-new`}
+              title={`Add question ${exam.questions.length + 1}`}
+              submitLabel="Add question"
+              busy={busy}
+              onSubmit={(q) => onSave([...exam.questions, { ...q, id: "", position: exam.questions.length }])}
+            />
+          )}
+        </>
       )}
     </div>
   );
@@ -710,6 +809,8 @@ function PasteQuestions({
 }) {
   const [text, setText] = useState("");
   const parsed = useMemo(() => parseQuestions(text), [text]);
+  // Pasted questions go after the ones already there, so number them on from those.
+  const numberOf = (q: { number: number }) => exam.questions.length + q.number;
   const needFixing = parsed.filter((q) => q.problems.length > 0).length;
 
   async function addAll() {
@@ -755,7 +856,7 @@ function PasteQuestions({
                 className={`rounded-btn p-3 text-sm ${q.problems.length ? "border border-brand-red bg-brand-red/5" : "bg-mist"}`}
               >
                 <p className="font-semibold">
-                  <span className="mr-2 text-pewter">{q.number}.</span>
+                  <span className="mr-2 text-pewter">{numberOf(q)}.</span>
                   {q.text || <em className="text-pewter">(no question text)</em>}
                 </p>
                 <ul className="mt-1 space-y-0.5 text-graphite">
@@ -768,7 +869,7 @@ function PasteQuestions({
                 </ul>
                 {q.problems.map((p) => (
                   <p key={p} className="mt-1 text-[13px] font-semibold text-brand-red">
-                    Question {q.number}: {p}
+                    Question {numberOf(q)}: {p}
                   </p>
                 ))}
               </li>
