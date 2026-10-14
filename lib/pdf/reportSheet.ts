@@ -1,8 +1,10 @@
 import "server-only";
 import { GRADE_KEY, gradeFor } from "@/lib/grades";
+import { principalComment, TRAITS } from "@/lib/reportCard";
 import type { ReportSheet, Student } from "@/lib/types";
 import { BRAND } from "./brand";
 import { contentBottom, drawFooter, drawLetterhead, type Box } from "./page";
+import { SIGNATURE_PNG_BASE64 } from "./signature-base64";
 
 /** Margin a document must be created with to hold report sheets. */
 export const REPORT_MARGIN = 36;
@@ -117,6 +119,75 @@ function drawGradeKey(doc: PDFKit.PDFDocument, y: number): number {
   return y + 12;
 }
 
+const SIGNATURE = SIGNATURE_PNG_BASE64 ? `data:image/png;base64,${SIGNATURE_PNG_BASE64}` : null;
+
+/** Where a block of `height` can start: here, or at the top of a fresh page. */
+function room(doc: PDFKit.PDFDocument, y: number, height: number): number {
+  if (y + height <= contentBottom(doc)) return y;
+  drawFooter(doc, BOX);
+  doc.addPage();
+  return REPORT_MARGIN;
+}
+
+const SECTION_HEIGHT = 16;
+function sectionBar(doc: PDFKit.PDFDocument, y: number, title: string): number {
+  doc.rect(BOX.left, y, BOX.width, SECTION_HEIGHT).fill("#D9DBE3");
+  doc.fillColor(BRAND.ink).font("Helvetica-Bold").fontSize(9.5).text(title, BOX.left + PAD, y + 4, { lineBreak: false });
+  return y + SECTION_HEIGHT;
+}
+
+const RATING_COLOURS: Record<string, string> = {
+  Excellent: BRAND.green,
+  "Very Good": "#2563EB",
+  Good: BRAND.green,
+  Fair: BRAND.amber,
+  Poor: BRAND.red,
+};
+
+/** The class teacher's ratings, one trait a row, each rating marked with a coloured tick bar. */
+function drawEffectiveAreas(doc: PDFKit.PDFDocument, y: number, ratings: ReportSheet["ratings"]): number {
+  const rowHeight = 14;
+  const half = BOX.width / 2;
+  y = sectionBar(doc, room(doc, y, SECTION_HEIGHT + TRAITS.length * rowHeight), "Effective Areas");
+  for (const trait of TRAITS) {
+    cellBorder(doc, BOX.left, y, BOX.width, rowHeight);
+    doc.fillColor(BRAND.ink).font("Helvetica").fontSize(8.5).text(trait, BOX.left + PAD, y + 3.5, { width: half - 2 * PAD, lineBreak: false });
+    const rating = ratings[trait];
+    if (rating) {
+      doc.rect(BOX.left + half, y + 1.5, 2, rowHeight - 3).fill(RATING_COLOURS[rating] ?? BRAND.graphite);
+      doc.fillColor(BRAND.ink).text(rating, BOX.left + half + 8, y + 3.5, { lineBreak: false });
+    }
+    y += rowHeight;
+  }
+  return y;
+}
+
+/** A titled comment box, signed bottom right — with a signature image above the name if there is one. */
+function drawComment(
+  doc: PDFKit.PDFDocument,
+  y: number,
+  title: string,
+  text: string,
+  signedBy: string | null,
+  signature: string | null = null
+): number {
+  const textWidth = BOX.width - 2 * PAD - (signature ? 100 : 0);
+  doc.font("Helvetica").fontSize(9);
+  const height = Math.max(doc.heightOfString(text, { width: textWidth }) + 2 * PAD + 14, signature ? 50 : 0);
+  y = sectionBar(doc, room(doc, y, SECTION_HEIGHT + height), title);
+  cellBorder(doc, BOX.left, y, BOX.width, height);
+  doc.fillColor(BRAND.ink).font("Helvetica").fontSize(9).text(text, BOX.left + PAD, y + PAD, { width: textWidth });
+  if (signature) doc.image(signature, BOX.left + BOX.width - PAD - 90, y + 4, { fit: [90, 28], align: "right" });
+  if (signedBy) {
+    doc
+      .fillColor(BRAND.graphite)
+      .font("Helvetica-Oblique")
+      .fontSize(8.5)
+      .text(`-- ${signedBy}`, BOX.left + PAD, y + height - PAD - 9, { width: BOX.width - 2 * PAD, align: "right", lineBreak: false });
+  }
+  return y + height;
+}
+
 const CHART_LABELS = 60; // room under the plot for the slanted subject names
 const CHART_PLOT = { ideal: 90, least: 55 };
 
@@ -150,8 +221,9 @@ function drawChart(doc: PDFKit.PDFDocument, top: number, plotHeight: number, row
 
 /**
  * Draws one term's report sheet on the current page: letterhead, the facts
- * grid, the marks table with grades, the grade key and a chart of the
- * subjects. The chart shrinks to fit under a long table, and moves to a page
+ * grid, the marks table with grades, the grade key, the class teacher's
+ * ratings and comment (once written), the principal's comment and a chart of
+ * the subjects. The chart shrinks to fit under a long table, and moves to a page
  * of its own only when there is no room for it at all.
  */
 export function drawReportSheet(
@@ -166,6 +238,7 @@ export function drawReportSheet(
   });
   const obtained = rows.reduce((sum, r) => sum + r.total, 0);
   const obtainable = rows.length * obtainablePerSubject;
+  const overall = (obtained / obtainable) * 100;
   const attendance = sheet.attendance;
 
   let y = drawLetterhead(doc, BOX, `${sheet.sessionName} ${sheet.termName} Report Sheet`);
@@ -189,13 +262,17 @@ export function drawReportSheet(
     [
       ["Total Marks Obtainable", String(obtainable)],
       ["Total Marks Obtained", mark(obtained)],
-      ["Overall Performance", ((obtained / obtainable) * 100).toFixed(2)],
+      ["Overall Performance", overall.toFixed(2)],
     ],
     [["Next Resumption Date", sheet.nextTermBegins ? shortDate(sheet.nextTermBegins) : BLANK]],
   ]);
 
   y = drawScores(doc, y + 8, sheet, rows);
   y = drawGradeKey(doc, y + 9);
+
+  if (Object.keys(sheet.ratings).length > 0) y = drawEffectiveAreas(doc, y + 4, sheet.ratings);
+  if (sheet.teacherComment) y = drawComment(doc, y + 8, "Teacher Comment", sheet.teacherComment, sheet.teacherName);
+  y = drawComment(doc, y + 8, "Principal's Comments", principalComment(overall), BRAND.principalName, SIGNATURE);
 
   y += 18;
   let plotHeight = Math.min(CHART_PLOT.ideal, contentBottom(doc) - y - CHART_LABELS);

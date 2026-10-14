@@ -209,4 +209,9 @@ export type ReportSheet = {
   examMax: number;
   /** In the class's report order. A mark never entered is null. */
   subjects: { name: string; ca: number | null; exam: number | null }[];
+  /** "Effective Areas": trait → rating, from the class teacher. Empty if not yet rated. */
+  ratings: Partial<Record<string, string>>;
+  teacherComment: string | null;
+  /** Who wrote the comment, to sign it with. */
+  teacherName: string | null;
 };

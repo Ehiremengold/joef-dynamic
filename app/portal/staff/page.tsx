@@ -12,10 +12,11 @@ import RosterPanel from "@/components/portal/staff/RosterPanel";
 import TeamPanel from "@/components/portal/staff/TeamPanel";
 import ClassesPanel from "@/components/portal/staff/ClassesPanel";
 import AttendancePanel from "@/components/portal/staff/AttendancePanel";
+import ReportCardsPanel from "@/components/portal/staff/ReportCardsPanel";
 import type { StaffRole } from "@/lib/types";
 
 type Me = { id: string; fullName: string; role: StaffRole; email: string } | null;
-type Tab = "exams" | "results" | "students" | "classes" | "attendance" | "team";
+type Tab = "exams" | "results" | "students" | "classes" | "attendance" | "reports" | "team";
 
 function useStaff() {
   const [me, setMe] = useState<Me>(null);
@@ -50,6 +51,7 @@ const TABS: [Tab, string][] = [
   ["students", "Students"],
   ["classes", "Classes"],
   ["attendance", "Attendance"],
+  ["reports", "Report cards"],
   ["team", "Staff accounts"],
 ];
 
@@ -125,6 +127,8 @@ export default function StaffPage() {
             <ClassesPanel onUnauthorized={refresh} />
           ) : tab === "attendance" ? (
             <AttendancePanel me={me} onUnauthorized={refresh} />
+          ) : tab === "reports" ? (
+            <ReportCardsPanel me={me} onUnauthorized={refresh} />
           ) : (
             <TeamPanel currentEmail={me.email} onUnauthorized={refresh} />
           )}

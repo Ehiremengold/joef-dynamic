@@ -41,13 +41,18 @@ export async function listReportSheets(studentId: string): Promise<ReportSheet[]
   }
   const classIds = [...new Set(scores.map((s) => s.class_id as string | null).filter(Boolean))] as string[];
 
-  const [{ data: summaries }, { data: order }] = await Promise.all([
+  const [{ data: summaries }, { data: order }, { data: reports }] = await Promise.all([
     supa
       .from("term_class_summary")
       .select("term_id, class_id, students, average_percent")
       .in("term_id", [...byTerm.keys()]),
     supa.from("class_subjects").select("class_id, subject_id, position").in("class_id", classIds),
+    supa
+      .from("term_reports")
+      .select("term_id, ratings, teacher_comment, staff(full_name)")
+      .eq("student_id", studentId),
   ]);
+  const reportFor = new Map((reports ?? []).map((r) => [r.term_id as string, r as Row]));
   const summaryFor = new Map((summaries ?? []).map((r) => [`${r.term_id}|${r.class_id}`, r]));
   const positionFor = new Map(
     (order ?? []).map((r) => [`${r.class_id}|${r.subject_id}`, r.position as number | null])
@@ -59,6 +64,7 @@ export async function listReportSheets(studentId: string): Promise<ReportSheet[]
       const term = first.terms as Row;
       const classId = first.class_id as string | null;
       const summary = summaryFor.get(`${termId}|${classId}`);
+      const report = reportFor.get(termId);
       const attendance = classId ? await getStudentAttendanceForTerm(studentId, classId, termId) : null;
 
       const subjects = rows
@@ -83,6 +89,9 @@ export async function listReportSheets(studentId: string): Promise<ReportSheet[]
         caMax: first.ca_max as number,
         examMax: first.exam_max as number,
         subjects,
+        ratings: (report?.ratings as ReportSheet["ratings"]) ?? {},
+        teacherComment: (report?.teacher_comment as string | null) ?? null,
+        teacherName: ((report?.staff as Row | null)?.full_name as string | undefined) ?? null,
       };
       return sheet;
     })

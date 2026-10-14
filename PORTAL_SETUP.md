@@ -68,6 +68,18 @@ New students get a PIN and new staff a password. They are written once to
 `import-output/student-pins-*.csv` and `import-output/staff-passwords-*.csv`; hand
 them out, then delete the files. That folder is gitignored — never commit it.
 
+## 4c. Principal's signature on report sheets
+
+Report sheets print the principal's comment signed by the principal. To add the
+signature image, save it as `public/images/principal-signature.png` (cropped close,
+on a white or transparent background) and run:
+
+```
+node scripts/gen-pdf-logo.mjs
+```
+
+Until then the comment is signed with the name only.
+
 ## 5. Run locally
 
 ```

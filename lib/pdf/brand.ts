@@ -11,6 +11,7 @@ export const BRAND = {
   green: "#15803D",
   amber: "#EA580C",
   schoolName: "Joef Dynamic College",
+  principalName: "Joseph Agbebaku",
   motto: "The Solid Foundation",
   addressLines: [
     "78 Norman Williams Street, Ikoyi, Lagos",
