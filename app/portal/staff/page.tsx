@@ -13,9 +13,9 @@ import TeamPanel from "@/components/portal/staff/TeamPanel";
 import ClassesPanel from "@/components/portal/staff/ClassesPanel";
 import AttendancePanel from "@/components/portal/staff/AttendancePanel";
 import ReportCardsPanel from "@/components/portal/staff/ReportCardsPanel";
-import type { StaffRole } from "@/lib/types";
+import type { SignedInStaff } from "@/lib/types";
 
-type Me = { id: string; fullName: string; role: StaffRole; email: string } | null;
+type Me = SignedInStaff | null;
 type Tab = "exams" | "results" | "students" | "classes" | "attendance" | "reports" | "team";
 
 function useStaff() {

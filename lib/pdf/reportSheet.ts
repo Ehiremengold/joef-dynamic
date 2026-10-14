@@ -1,6 +1,6 @@
 import "server-only";
 import { GRADE_KEY, gradeFor } from "@/lib/grades";
-import { principalComment, TRAITS } from "@/lib/reportCard";
+import { principalComment, TRAITS, type Rating, type Ratings } from "@/lib/reportCard";
 import type { ReportSheet, Student } from "@/lib/types";
 import { BRAND } from "./brand";
 import { contentBottom, drawFooter, drawLetterhead, type Box } from "./page";
@@ -121,8 +121,8 @@ function drawGradeKey(doc: PDFKit.PDFDocument, y: number): number {
 
 const SIGNATURE = SIGNATURE_PNG_BASE64 ? `data:image/png;base64,${SIGNATURE_PNG_BASE64}` : null;
 
-/** Where a block of `height` can start: here, or at the top of a fresh page. */
-function room(doc: PDFKit.PDFDocument, y: number, height: number): number {
+/** The y a block of `height` starts at: `y` if it fits on this page, else the top of a fresh one. */
+function startYFor(doc: PDFKit.PDFDocument, y: number, height: number): number {
   if (y + height <= contentBottom(doc)) return y;
   drawFooter(doc, BOX);
   doc.addPage();
@@ -136,25 +136,23 @@ function sectionBar(doc: PDFKit.PDFDocument, y: number, title: string): number {
   return y + SECTION_HEIGHT;
 }
 
-const RATING_COLOURS: Record<string, string> = {
+const RATING_COLOURS: Record<Rating, string> = {
   Excellent: BRAND.green,
   "Very Good": "#2563EB",
-  Good: BRAND.green,
-  Fair: BRAND.amber,
-  Poor: BRAND.red,
+  Good: BRAND.amber,
 };
 
 /** The class teacher's ratings, one trait a row, each rating marked with a coloured tick bar. */
-function drawEffectiveAreas(doc: PDFKit.PDFDocument, y: number, ratings: ReportSheet["ratings"]): number {
+function drawEffectiveAreas(doc: PDFKit.PDFDocument, y: number, ratings: Ratings): number {
   const rowHeight = 14;
   const half = BOX.width / 2;
-  y = sectionBar(doc, room(doc, y, SECTION_HEIGHT + TRAITS.length * rowHeight), "Effective Areas");
+  y = sectionBar(doc, startYFor(doc, y, SECTION_HEIGHT + TRAITS.length * rowHeight), "Effective Areas");
   for (const trait of TRAITS) {
     cellBorder(doc, BOX.left, y, BOX.width, rowHeight);
     doc.fillColor(BRAND.ink).font("Helvetica").fontSize(8.5).text(trait, BOX.left + PAD, y + 3.5, { width: half - 2 * PAD, lineBreak: false });
     const rating = ratings[trait];
     if (rating) {
-      doc.rect(BOX.left + half, y + 1.5, 2, rowHeight - 3).fill(RATING_COLOURS[rating] ?? BRAND.graphite);
+      doc.rect(BOX.left + half, y + 1.5, 2, rowHeight - 3).fill(RATING_COLOURS[rating]);
       doc.fillColor(BRAND.ink).text(rating, BOX.left + half + 8, y + 3.5, { lineBreak: false });
     }
     y += rowHeight;
@@ -174,7 +172,7 @@ function drawComment(
   const textWidth = BOX.width - 2 * PAD - (signature ? 100 : 0);
   doc.font("Helvetica").fontSize(9);
   const height = Math.max(doc.heightOfString(text, { width: textWidth }) + 2 * PAD + 14, signature ? 50 : 0);
-  y = sectionBar(doc, room(doc, y, SECTION_HEIGHT + height), title);
+  y = sectionBar(doc, startYFor(doc, y, SECTION_HEIGHT + height), title);
   cellBorder(doc, BOX.left, y, BOX.width, height);
   doc.fillColor(BRAND.ink).font("Helvetica").fontSize(9).text(text, BOX.left + PAD, y + PAD, { width: textWidth });
   if (signature) doc.image(signature, BOX.left + BOX.width - PAD - 90, y + 4, { fit: [90, 28], align: "right" });
@@ -270,9 +268,10 @@ export function drawReportSheet(
   y = drawScores(doc, y + 8, sheet, rows);
   y = drawGradeKey(doc, y + 9);
 
-  if (Object.keys(sheet.ratings).length > 0) y = drawEffectiveAreas(doc, y + 4, sheet.ratings);
-  if (sheet.teacherComment) y = drawComment(doc, y + 8, "Teacher Comment", sheet.teacherComment, sheet.teacherName);
-  y = drawComment(doc, y + 8, "Principal's Comments", principalComment(overall), BRAND.principalName, SIGNATURE);
+  const { ratings, teacherComment, signedBy } = sheet.report;
+  if (Object.keys(ratings).length > 0) y = drawEffectiveAreas(doc, y + 4, ratings);
+  if (teacherComment) y = drawComment(doc, y + 8, "Teacher Comment", teacherComment, signedBy);
+  y = drawComment(doc, y + 8, "Principal's Comments", principalComment(overall, sheet.termName), BRAND.principalName, SIGNATURE);
 
   y += 18;
   let plotHeight = Math.min(CHART_PLOT.ideal, contentBottom(doc) - y - CHART_LABELS);

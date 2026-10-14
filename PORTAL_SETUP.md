@@ -75,7 +75,7 @@ signature image, save it as `public/images/principal-signature.png` (cropped clo
 on a white or transparent background) and run:
 
 ```
-node scripts/gen-pdf-logo.mjs
+node scripts/gen-pdf-images.mjs
 ```
 
 Until then the comment is signed with the name only.

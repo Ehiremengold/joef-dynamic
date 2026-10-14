@@ -2,6 +2,7 @@ import "server-only";
 import { serviceClient } from "@/lib/supabase/server";
 import { LEVEL_NAMES, type ClassName, type ReportSheet, type Term } from "@/lib/types";
 import { getStudentAttendanceForTerm } from "./attendance";
+import { mapTermReport, TERM_REPORT_SELECT } from "./termReports";
 
 type Row = Record<string, unknown>;
 
@@ -49,7 +50,7 @@ export async function listReportSheets(studentId: string): Promise<ReportSheet[]
     supa.from("class_subjects").select("class_id, subject_id, position").in("class_id", classIds),
     supa
       .from("term_reports")
-      .select("term_id, ratings, teacher_comment, staff(full_name)")
+      .select(TERM_REPORT_SELECT)
       .eq("student_id", studentId),
   ]);
   const reportFor = new Map((reports ?? []).map((r) => [r.term_id as string, r as Row]));
@@ -89,9 +90,7 @@ export async function listReportSheets(studentId: string): Promise<ReportSheet[]
         caMax: first.ca_max as number,
         examMax: first.exam_max as number,
         subjects,
-        ratings: (report?.ratings as ReportSheet["ratings"]) ?? {},
-        teacherComment: (report?.teacher_comment as string | null) ?? null,
-        teacherName: ((report?.staff as Row | null)?.full_name as string | undefined) ?? null,
+        report: mapTermReport(report),
       };
       return sheet;
     })

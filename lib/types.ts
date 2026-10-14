@@ -1,3 +1,5 @@
+import type { TermReport } from "./reportCard";
+
 // Youngest to oldest. Keep in step with the level checks in
 // supabase/migrations/0009_whole_school_records.sql.
 export const CLASSES = [
@@ -81,6 +83,9 @@ export type SittingState = {
   answers: (number | null)[];
   secondsLeft: number;
 };
+
+/** The signed-in staff member, as the staff pages know them. */
+export type SignedInStaff = Pick<Staff, "id" | "fullName" | "role" | "email">;
 
 export type Staff = {
   id: string;
@@ -209,9 +214,6 @@ export type ReportSheet = {
   examMax: number;
   /** In the class's report order. A mark never entered is null. */
   subjects: { name: string; ca: number | null; exam: number | null }[];
-  /** "Effective Areas": trait → rating, from the class teacher. Empty if not yet rated. */
-  ratings: Partial<Record<string, string>>;
-  teacherComment: string | null;
-  /** Who wrote the comment, to sign it with. */
-  teacherName: string | null;
+  /** The class teacher's ratings and comment; empty until they write it. */
+  report: TermReport;
 };

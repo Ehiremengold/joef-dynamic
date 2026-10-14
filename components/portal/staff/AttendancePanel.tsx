@@ -1,9 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { AcademicSession, Class, StaffRole, Term } from "@/lib/types";
+import type { AcademicSession, Class, SignedInStaff, Term } from "@/lib/types";
 
-type Me = { id: string; fullName: string; role: StaffRole; email: string };
 
 type AttendanceRow = { studentId: string; fullName: string; admissionNumber: string; daysPresent: number };
 
@@ -15,7 +14,7 @@ export default function AttendancePanel({
   me,
   onUnauthorized,
 }: {
-  me: Me;
+  me: SignedInStaff;
   onUnauthorized: () => void;
 }) {
   const [sessions, setSessions] = useState<AcademicSession[]>([]);

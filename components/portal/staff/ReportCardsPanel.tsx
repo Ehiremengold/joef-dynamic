@@ -1,18 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { MAX_COMMENT_LENGTH, RATINGS, TRAITS, type Rating } from "@/lib/reportCard";
-import type { Class, StaffRole, Term } from "@/lib/types";
-
-type Me = { id: string; fullName: string; role: StaffRole; email: string };
-
-type ReportRow = {
-  studentId: string;
-  fullName: string;
-  admissionNumber: string;
-  ratings: Partial<Record<string, Rating>>;
-  teacherComment: string;
-};
+import { MAX_COMMENT_LENGTH, RATINGS, TRAITS, type Rating, type Ratings, type TermReportRow } from "@/lib/reportCard";
+import type { Class, SignedInStaff, Term } from "@/lib/types";
 
 function classLabel(c: Class): string {
   return `${c.campusName ?? "Campus"} · ${c.level}${c.arm ? c.arm : ""}`;
@@ -22,15 +12,16 @@ function classLabel(c: Class): string {
  * Where a class teacher rates each student's "Effective Areas" and writes
  * their comment for a term; both print on the student's report sheet.
  * Only the class's own class teacher can edit. Admins can read every class.
+ * A term lists the students who were in the class that term.
  */
-export default function ReportCardsPanel({ me, onUnauthorized }: { me: Me; onUnauthorized: () => void }) {
+export default function ReportCardsPanel({ me, onUnauthorized }: { me: SignedInStaff; onUnauthorized: () => void }) {
   const [terms, setTerms] = useState<Term[]>([]);
   const [classes, setClasses] = useState<Class[]>([]);
   const [termId, setTermId] = useState("");
   const [classId, setClassId] = useState("");
-  const [rows, setRows] = useState<ReportRow[]>([]);
+  const [rows, setRows] = useState<TermReportRow[]>([]);
   const [selected, setSelected] = useState("");
-  const [draft, setDraft] = useState<{ ratings: ReportRow["ratings"]; teacherComment: string } | null>(null);
+  const [draft, setDraft] = useState<{ ratings: Ratings; teacherComment: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -76,7 +67,7 @@ export default function ReportCardsPanel({ me, onUnauthorized }: { me: Me; onUna
   const canEdit = cls?.classTeacherId === me.id;
   const student = rows.find((r) => r.studentId === selected);
 
-  function open(row: ReportRow) {
+  function open(row: TermReportRow) {
     setSelected(row.studentId);
     setDraft({ ratings: { ...row.ratings }, teacherComment: row.teacherComment });
     setNotice("");
@@ -97,7 +88,11 @@ export default function ReportCardsPanel({ me, onUnauthorized }: { me: Me; onUna
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "Could not save");
       setRows((prev) =>
-        prev.map((r) => (r.studentId === student.studentId ? { ...r, ...draft, teacherComment: draft.teacherComment.trim() } : r))
+        prev.map((r) =>
+          r.studentId === student.studentId
+            ? { ...r, ...draft, teacherComment: draft.teacherComment.trim(), signedBy: d.signedBy }
+            : r
+        )
       );
       setNotice(`Saved ${student.fullName}'s report.`);
     } catch (e) {
@@ -116,8 +111,8 @@ export default function ReportCardsPanel({ me, onUnauthorized }: { me: Me; onUna
     );
   }
 
-  const select = "mt-1 cursor-pointer rounded-btn border border-smoke bg-white px-3 py-2 text-sm outline-none focus:border-brand-navy";
-  const done = (r: ReportRow) => Object.keys(r.ratings).length === TRAITS.length && r.teacherComment.trim() !== "";
+  const selectStyle = "mt-1 cursor-pointer rounded-btn border border-smoke bg-white px-3 py-2 text-sm outline-none focus:border-brand-navy";
+  const isComplete = (r: TermReportRow) => Object.keys(r.ratings).length === TRAITS.length && r.teacherComment.trim() !== "";
 
   return (
     <div className="space-y-6">
@@ -132,7 +127,7 @@ export default function ReportCardsPanel({ me, onUnauthorized }: { me: Me; onUna
       <div className="flex flex-wrap gap-3">
         <div>
           <label className="block text-[13px] font-semibold" htmlFor="rc-term">Term</label>
-          <select id="rc-term" value={termId} onChange={(e) => setTermId(e.target.value)} className={select}>
+          <select id="rc-term" value={termId} onChange={(e) => setTermId(e.target.value)} className={selectStyle}>
             {terms.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.name} — {t.sessionName}
@@ -143,7 +138,7 @@ export default function ReportCardsPanel({ me, onUnauthorized }: { me: Me; onUna
         </div>
         <div>
           <label className="block text-[13px] font-semibold" htmlFor="rc-class">Class</label>
-          <select id="rc-class" value={classId} onChange={(e) => setClassId(e.target.value)} className={select}>
+          <select id="rc-class" value={classId} onChange={(e) => setClassId(e.target.value)} className={selectStyle}>
             {classes.map((c) => (
               <option key={c.id} value={c.id}>{classLabel(c)}</option>
             ))}
@@ -174,7 +169,7 @@ export default function ReportCardsPanel({ me, onUnauthorized }: { me: Me; onUna
                   }`}
                 >
                   <span className="font-semibold">{r.fullName}</span>
-                  {done(r) && <span className={r.studentId === selected ? "text-white" : "text-brand-green"}>✓</span>}
+                  {isComplete(r) && <span className={r.studentId === selected ? "text-white" : "text-brand-green"}>✓</span>}
                 </button>
               </li>
             ))}
