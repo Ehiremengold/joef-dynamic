@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { parseQuestions } from "@/lib/questionParser";
 import { CLASSES, type Exam } from "@/lib/types";
 import EntranceAccess from "./EntranceAccess";
 
@@ -191,7 +192,8 @@ function ExamCard({
   const [error, setError] = useState("");
   const open = panel === "questions";
 
-  async function update(patch: Record<string, unknown>) {
+  /** Save a change to the exam; resolves to whether it was saved. */
+  async function update(patch: Record<string, unknown>): Promise<boolean> {
     setBusy(true);
     setError("");
     try {
@@ -202,8 +204,10 @@ function ExamCard({
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "Update failed");
       onChanged();
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Update failed");
+      return false;
     } finally {
       setBusy(false);
     }
@@ -478,8 +482,9 @@ function QuestionEditor({
 }: {
   exam: Exam;
   busy: boolean;
-  onSave: (questions: Exam["questions"]) => void;
+  onSave: (questions: Exam["questions"]) => Promise<boolean>;
 }) {
+  const [mode, setMode] = useState<"paste" | "one">("paste");
   const [text, setText] = useState("");
   const [options, setOptions] = useState(["", "", "", ""]);
   const [correctIndex, setCorrectIndex] = useState(0);
@@ -548,7 +553,30 @@ function QuestionEditor({
         </ol>
       )}
 
-      <form onSubmit={addQuestion} className="mt-5 rounded-btn border border-dashed border-pewter/50 p-4">
+      <div className="mt-5 flex gap-2">
+        {(
+          [
+            ["paste", "Paste questions"],
+            ["one", "Add one question"],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setMode(key)}
+            className={`cursor-pointer rounded-btn px-4 py-2 text-sm font-semibold ${
+              mode === key ? "bg-brand-navy text-white" : "border border-smoke bg-white text-ink hover:border-brand-navy"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {mode === "paste" ? (
+        <PasteQuestions exam={exam} busy={busy} onSave={onSave} />
+      ) : (
+      <form onSubmit={addQuestion} className="mt-3 rounded-btn border border-dashed border-pewter/50 p-4">
         <p className="font-display text-sm font-bold tracking-tight">Add a question</p>
         <textarea
           value={text}
@@ -592,6 +620,110 @@ function QuestionEditor({
           {busy ? "Saving…" : "Add question"}
         </button>
       </form>
+      )}
+    </div>
+  );
+}
+
+const PASTE_EXAMPLE = `1. Which apparatus is most suitable for measuring a definite volume of liquid?
+A. Mortar and pestle
+B. Measuring cylinder
+C. Evaporating dish
+D. Filter funnel
+Answer: B
+
+2. …`;
+
+/**
+ * Paste a whole set of questions at once (typed, or copied from Word), check
+ * them in a preview, and add them all. Nothing is saved while any question
+ * still has a problem.
+ */
+function PasteQuestions({
+  exam,
+  busy,
+  onSave,
+}: {
+  exam: Exam;
+  busy: boolean;
+  onSave: (questions: Exam["questions"]) => Promise<boolean>;
+}) {
+  const [text, setText] = useState("");
+  const parsed = useMemo(() => parseQuestions(text), [text]);
+  const needFixing = parsed.filter((q) => q.problems.length > 0).length;
+
+  async function addAll() {
+    const saved = await onSave([
+      ...exam.questions,
+      ...parsed.map((q, i) => ({
+        id: "",
+        text: q.text,
+        options: q.options,
+        correctIndex: q.correctIndex,
+        position: exam.questions.length + i,
+      })),
+    ]);
+    if (saved) setText("");
+  }
+
+  return (
+    <div className="mt-3 rounded-btn border border-dashed border-pewter/50 p-4">
+      <p className="font-display text-sm font-bold tracking-tight">Paste questions</p>
+      <p className="mt-1 text-[13px] text-pewter">
+        Paste from Word or type them in. End every question with an <strong>Answer:</strong> line; numbering and blank
+        lines are optional. An <strong>Explanation:</strong> line is allowed and is never shown to students.
+      </p>
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder={PASTE_EXAMPLE}
+        rows={10}
+        className="mt-3 w-full rounded-btn border border-smoke px-3 py-2.5 font-mono text-[13px] outline-none focus:border-brand-navy"
+      />
+
+      {parsed.length > 0 && (
+        <>
+          <p className={`mt-3 text-sm font-semibold ${needFixing ? "text-brand-red" : "text-brand-green"}`}>
+            {needFixing
+              ? `${parsed.length} question${parsed.length === 1 ? "" : "s"} found — ${needFixing} need${needFixing === 1 ? "s" : ""} fixing before they can be added`
+              : `${parsed.length} question${parsed.length === 1 ? "" : "s"} ready to add`}
+          </p>
+          <ol className="mt-3 max-h-[480px] space-y-2 overflow-y-auto">
+            {parsed.map((q) => (
+              <li
+                key={q.number}
+                className={`rounded-btn p-3 text-sm ${q.problems.length ? "border border-brand-red bg-brand-red/5" : "bg-mist"}`}
+              >
+                <p className="font-semibold">
+                  <span className="mr-2 text-pewter">{q.number}.</span>
+                  {q.text || <em className="text-pewter">(no question text)</em>}
+                </p>
+                <ul className="mt-1 space-y-0.5 text-graphite">
+                  {q.options.map((opt, oi) => (
+                    <li key={oi} className={oi === q.correctIndex ? "font-bold text-brand-green" : ""}>
+                      {String.fromCharCode(65 + oi)}. {opt}
+                      {oi === q.correctIndex ? " (correct)" : ""}
+                    </li>
+                  ))}
+                </ul>
+                {q.problems.map((p) => (
+                  <p key={p} className="mt-1 text-[13px] font-semibold text-brand-red">
+                    Question {q.number}: {p}
+                  </p>
+                ))}
+              </li>
+            ))}
+          </ol>
+          <button
+            type="button"
+            onClick={addAll}
+            disabled={busy || needFixing > 0}
+            className="mt-3 cursor-pointer rounded-btn bg-brand-navy px-5 py-2.5 text-sm font-semibold text-white transition-colors duration-200 hover:bg-ink disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {busy ? "Saving…" : `Add ${parsed.length} question${parsed.length === 1 ? "" : "s"}`}
+          </button>
+        </>
+      )}
     </div>
   );
 }
