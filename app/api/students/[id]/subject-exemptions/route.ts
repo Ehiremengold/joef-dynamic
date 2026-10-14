@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isAdmin } from "@/lib/roles";
 import { errorResponse } from "@/lib/api";
 import { AuthError, requireStaff } from "@/lib/auth/staff";
 import { getClassById } from "@/lib/data/classes";
@@ -10,7 +11,7 @@ type Params = { params: Promise<{ id: string }> };
 /** Admins may edit any student; a teacher may only edit their own class's students. */
 async function assertCanEditStudent(studentClassId: string | null) {
   const staff = await requireStaff();
-  if (staff.role === "admin") return staff;
+  if (isAdmin(staff.role)) return staff;
   if (studentClassId) {
     const cls = await getClassById(studentClassId);
     if (cls?.classTeacherId === staff.id) return staff;

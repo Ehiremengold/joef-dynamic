@@ -8,7 +8,10 @@ import {
   listStaff,
   updateStaff,
 } from "@/lib/data/staff";
+import { isAdmin, isSuperAdmin } from "@/lib/roles";
 import type { StaffRole } from "@/lib/types";
+
+const ROLES: StaffRole[] = ["teacher", "admin", "super_admin"];
 
 /** GET /api/staff — admin lists all staff accounts. */
 export async function GET() {
@@ -24,12 +27,15 @@ export async function GET() {
 /** POST /api/staff — admin creates a staff account. */
 export async function POST(req: NextRequest) {
   try {
-    await requireAdmin();
+    const admin = await requireAdmin();
     const body = await req.json().catch(() => null);
     const fullName = String(body?.fullName || "").trim();
     const email = String(body?.email || "").trim().toLowerCase();
     const password = String(body?.password || "");
-    const role = body?.role === "admin" ? "admin" : "teacher";
+    const role: StaffRole = ROLES.includes(body?.role) ? body.role : "teacher";
+    if (role === "super_admin" && !isSuperAdmin(admin.role)) {
+      return NextResponse.json({ error: "Only a super admin can create a super admin" }, { status: 403 });
+    }
 
     if (fullName.length < 2) {
       return NextResponse.json({ error: "Enter the staff member's name" }, { status: 400 });
@@ -53,7 +59,8 @@ export async function POST(req: NextRequest) {
 
 /**
  * PATCH /api/staff — admin updates a staff account: { id, fullName?, role?, active? }.
- * Partial — only the fields present are touched.
+ * Partial — only the fields present are touched. Only a super admin can
+ * change a super admin's account, or make someone a super admin.
  */
 export async function PATCH(req: NextRequest) {
   try {
@@ -67,6 +74,10 @@ export async function PATCH(req: NextRequest) {
     const target = await getStaffById(id);
     if (!target) {
       return NextResponse.json({ error: "Staff member not found" }, { status: 404 });
+    }
+
+    if (!isSuperAdmin(admin.role) && (isSuperAdmin(target.role) || body.role === "super_admin")) {
+      return NextResponse.json({ error: "Only a super admin can change a super admin's account" }, { status: 403 });
     }
 
     const patch: { fullName?: string; role?: StaffRole; active?: boolean } = {};
@@ -83,7 +94,7 @@ export async function PATCH(req: NextRequest) {
     }
 
     if (body.role !== undefined) {
-      if (body.role !== "admin" && body.role !== "teacher") {
+      if (!ROLES.includes(body.role)) {
         return NextResponse.json({ error: "Invalid role" }, { status: 400 });
       }
       patch.role = body.role;
@@ -100,9 +111,9 @@ export async function PATCH(req: NextRequest) {
         { status: 400 }
       );
     }
-    if (id === admin.id && patch.role === "teacher") {
+    if (id === admin.id && patch.role !== undefined && patch.role !== admin.role) {
       return NextResponse.json(
-        { error: "You can't remove your own admin rights — ask another admin to do it" },
+        { error: "You can't change your own role — ask another admin to do it" },
         { status: 400 }
       );
     }
@@ -110,7 +121,7 @@ export async function PATCH(req: NextRequest) {
     // Demoting or deactivating the last remaining admin would leave nobody able
     // to manage staff, exams or the roster.
     const losesAdmin =
-      target.role === "admin" &&
+      isAdmin(target.role) &&
       target.active &&
       (patch.role === "teacher" || patch.active === false);
     if (losesAdmin && (await countActiveAdmins()) <= 1) {

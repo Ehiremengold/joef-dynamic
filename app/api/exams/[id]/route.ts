@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { errorResponse } from "@/lib/api";
-import { currentStaff, requireStaff } from "@/lib/auth/staff";
+import { AuthError, currentStaff, requireStaff } from "@/lib/auth/staff";
+import { examAccess } from "@/lib/roles";
 import { getTakerSession } from "@/lib/auth/session";
 import {
   deleteExam,
@@ -42,20 +43,36 @@ export async function GET(req: NextRequest, { params }: Params) {
 }
 
 /**
- * PUT /api/exams/:id — staff only. Partial: { title?, durationMins?, active?, questions? }.
- * Questions are validated and replaced wholesale.
+ * PUT /api/exams/:id — Partial: { title?, durationMins?, active?, questions? }.
+ * Questions are validated and replaced wholesale; existing ones are sent back
+ * with their id. A teacher can only change their own exams. An admin can
+ * change anyone's, except that removing questions from someone else's exam
+ * needs a super admin's approval (a deletion request).
  */
 export async function PUT(req: NextRequest, { params }: Params) {
   try {
-    await requireStaff();
+    const staff = await requireStaff();
     const { id } = await params;
     const exam = await getExam(id);
     if (!exam) {
       return NextResponse.json({ error: "Exam not found" }, { status: 404 });
     }
+    const access = examAccess(staff, exam);
+    if (access === "view") {
+      throw new AuthError("This exam belongs to another teacher — you can view it but not change it", 403);
+    }
     const body = await req.json().catch(() => null);
     if (!body) {
       return NextResponse.json({ error: "Invalid body" }, { status: 400 });
+    }
+    if (access === "contribute" && Array.isArray(body.questions)) {
+      const kept = new Set(body.questions.map((q: { id?: unknown }) => q?.id).filter(Boolean));
+      if (exam.questions.some((q) => !kept.has(q.id))) {
+        throw new AuthError(
+          "Removing a question from someone else's exam needs a super admin's approval — use Request removal",
+          403
+        );
+      }
     }
 
     if (Array.isArray(body.questions)) {
@@ -102,10 +119,18 @@ export async function PUT(req: NextRequest, { params }: Params) {
   }
 }
 
+/** DELETE /api/exams/:id — the exam's creator or a super admin. Admins send a deletion request instead. */
 export async function DELETE(req: NextRequest, { params }: Params) {
   try {
-    await requireStaff();
+    const staff = await requireStaff();
     const { id } = await params;
+    const exam = await getExam(id);
+    if (!exam) {
+      return NextResponse.json({ error: "Exam not found" }, { status: 404 });
+    }
+    if (examAccess(staff, exam) !== "manage") {
+      throw new AuthError("Deleting someone else's exam needs a super admin's approval — use Request deletion", 403);
+    }
     await deleteExam(id);
     return NextResponse.json({ ok: true });
   } catch (e) {

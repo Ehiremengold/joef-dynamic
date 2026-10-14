@@ -13,6 +13,7 @@ import TeamPanel from "@/components/portal/staff/TeamPanel";
 import ClassesPanel from "@/components/portal/staff/ClassesPanel";
 import AttendancePanel from "@/components/portal/staff/AttendancePanel";
 import ReportCardsPanel from "@/components/portal/staff/ReportCardsPanel";
+import { isAdmin, ROLE_LABELS } from "@/lib/roles";
 import type { SignedInStaff } from "@/lib/types";
 
 type Me = SignedInStaff | null;
@@ -75,7 +76,7 @@ export default function StaffPage() {
                 </h1>
                 {me && (
                   <p className="mt-1 text-sm text-white/70">
-                    {me.fullName} · {me.role === "admin" ? "Administrator" : "Teacher"}
+                    {me.fullName} · {ROLE_LABELS[me.role]}
                   </p>
                 )}
               </div>
@@ -91,7 +92,7 @@ export default function StaffPage() {
             </div>
             {me && (
               <div className="mt-6 flex flex-wrap gap-2">
-                {TABS.filter(([key]) => (key !== "team" && key !== "classes") || me.role === "admin").map(
+                {TABS.filter(([key]) => (key !== "team" && key !== "classes") || isAdmin(me.role)).map(
                   ([key, label]) => (
                     <button
                       key={key}
@@ -118,9 +119,9 @@ export default function StaffPage() {
           ) : !me ? (
             <StaffLogin onSignedIn={refresh} />
           ) : tab === "exams" ? (
-            <ExamsPanel onUnauthorized={refresh} />
+            <ExamsPanel me={me} onUnauthorized={refresh} />
           ) : tab === "results" ? (
-            <ResultsPanel onUnauthorized={refresh} />
+            <ResultsPanel me={me} onUnauthorized={refresh} />
           ) : tab === "students" ? (
             <RosterPanel onUnauthorized={refresh} />
           ) : tab === "classes" ? (
@@ -130,7 +131,7 @@ export default function StaffPage() {
           ) : tab === "reports" ? (
             <ReportCardsPanel me={me} onUnauthorized={refresh} />
           ) : (
-            <TeamPanel currentEmail={me.email} onUnauthorized={refresh} />
+            <TeamPanel me={me} onUnauthorized={refresh} />
           )}
         </section>
       </main>

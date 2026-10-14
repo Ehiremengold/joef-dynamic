@@ -80,7 +80,7 @@ export async function countActiveAdmins(): Promise<number> {
   const { count } = await serviceClient()
     .from("staff")
     .select("id", { count: "exact", head: true })
-    .eq("role", "admin")
+    .in("role", ["admin", "super_admin"])
     .eq("active", true);
   return count ?? 0;
 }

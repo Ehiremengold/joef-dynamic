@@ -1,15 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import { CLASSES, type Attempt } from "@/lib/types";
+import { isSuperAdmin } from "@/lib/roles";
+import { CLASSES, type Attempt, type SignedInStaff } from "@/lib/types";
 import Pagination from "./Pagination";
 import { usePagedList } from "./usePagedList";
 
 const YEARS = ["2024", "2025", "2026", "2027"];
 
 export default function ResultsPanel({
+  me,
   onUnauthorized,
 }: {
+  me: SignedInStaff;
   onUnauthorized: () => void;
 }) {
   const [name, setName] = useState("");
@@ -23,7 +26,7 @@ export default function ResultsPanel({
     onUnauthorized,
   });
 
-  /** Only for a result whose exam is gone — otherwise it is cleared from that exam's sittings. */
+  /** Super admins only, for a result whose exam is gone — otherwise it is cleared from that exam's sittings. */
   async function remove(a: Attempt) {
     if (!window.confirm(`Delete ${a.takerName}'s result for "${a.examTitle}"? This cannot be undone.`)) return;
     const res = await fetch(`/api/attempts/${a.id}`, { method: "DELETE" });
@@ -148,7 +151,7 @@ export default function ResultsPanel({
                           Transcript
                         </a>
                       )}
-                      {a.examId === null && (
+                      {a.examId === null && isSuperAdmin(me.role) && (
                         <button
                           type="button"
                           onClick={() => remove(a)}

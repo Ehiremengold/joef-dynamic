@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { errorResponse } from "@/lib/api";
-import { requireStaff } from "@/lib/auth/staff";
+import { AuthError, requireStaff } from "@/lib/auth/staff";
+import { examAccess } from "@/lib/roles";
 import { getExam } from "@/lib/data/exams";
 import {
   grantExtraSeconds,
   listSessionsForExam,
   secondsLeft,
 } from "@/lib/data/attemptSessions";
-import { deleteAttempt, listAttempts } from "@/lib/data/attempts";
+import { deleteAttempt, getAttemptById, listAttempts } from "@/lib/data/attempts";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -54,11 +55,16 @@ export async function GET(_req: NextRequest, { params }: Params) {
   }
 }
 
-/** PATCH /api/exams/:id/sittings — { sessionId, extraMins } give back lost time. */
+/** PATCH /api/exams/:id/sittings — { sessionId, extraMins } give back lost time. Not for view-only staff. */
 export async function PATCH(req: NextRequest, { params }: Params) {
   try {
-    await requireStaff();
-    await params;
+    const staff = await requireStaff();
+    const { id } = await params;
+    const exam = await getExam(id);
+    if (!exam) return NextResponse.json({ error: "Exam not found" }, { status: 404 });
+    if (examAccess(staff, exam) === "view") {
+      throw new AuthError("This exam belongs to another teacher — you can view it but not change it", 403);
+    }
     const body = await req.json().catch(() => null);
     const extraMins = Number(body?.extraMins);
     if (typeof body?.sessionId !== "string" || !Number.isFinite(extraMins)) {
@@ -76,17 +82,24 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
 /**
  * DELETE /api/exams/:id/sittings?attemptId= — clear a finished attempt so the
- * student can retake. Destructive: the recorded score is discarded.
+ * student can retake. Destructive: the recorded score is discarded, so only
+ * the exam's creator or a super admin may do it.
  */
 export async function DELETE(req: NextRequest, { params }: Params) {
   try {
-    await requireStaff();
-    await params;
-    const attemptId = new URL(req.url).searchParams.get("attemptId");
-    if (!attemptId) {
-      return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+    const staff = await requireStaff();
+    const { id } = await params;
+    const exam = await getExam(id);
+    if (!exam) return NextResponse.json({ error: "Exam not found" }, { status: 404 });
+    if (examAccess(staff, exam) !== "manage") {
+      throw new AuthError("Only the exam's creator or a super admin can clear a result", 403);
     }
-    await deleteAttempt(attemptId);
+    const attemptId = new URL(req.url).searchParams.get("attemptId");
+    const attempt = attemptId ? await getAttemptById(attemptId) : null;
+    if (!attempt || attempt.examId !== id) {
+      return NextResponse.json({ error: "That result isn't for this exam" }, { status: 400 });
+    }
+    await deleteAttempt(attempt.id);
     return NextResponse.json({ ok: true });
   } catch (e) {
     return errorResponse(e);

@@ -2,16 +2,20 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { pageCount, pageRange } from "@/lib/paging";
-import type { Staff } from "@/lib/types";
+import { isSuperAdmin, ROLE_LABELS } from "@/lib/roles";
+import type { SignedInStaff, Staff, StaffRole } from "@/lib/types";
 import Pagination from "./Pagination";
 
 export default function TeamPanel({
-  currentEmail,
+  me,
   onUnauthorized,
 }: {
-  currentEmail: string;
+  me: SignedInStaff;
   onUnauthorized: () => void;
 }) {
+  const currentEmail = me.email;
+  // Only a super admin can make a super admin, or change one's account.
+  const roleChoices: StaffRole[] = isSuperAdmin(me.role) ? ["teacher", "admin", "super_admin"] : ["teacher", "admin"];
   const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState("");
@@ -70,9 +74,11 @@ export default function TeamPanel({
   function changeRole(s: Staff, role: Staff["role"]) {
     if (role === s.role) return;
     const ok = window.confirm(
-      role === "admin"
-        ? `Make ${s.fullName} an administrator? They will be able to manage staff, students and exams.`
-        : `Remove ${s.fullName}'s admin rights and make them a teacher?`
+      role === "super_admin"
+        ? `Make ${s.fullName} a super admin? They will be able to approve deletions and manage other super admins.`
+        : role === "admin"
+          ? `Make ${s.fullName} an administrator? They will be able to manage staff, students and exams.`
+          : `Make ${s.fullName} a teacher? They will lose admin rights.`
     );
     if (!ok) return;
     patch(s, { role });
@@ -80,7 +86,7 @@ export default function TeamPanel({
 
   return (
     <div className="grid gap-8 xl:grid-cols-[300px_1fr]">
-      <AddStaff onAdded={showNewest} onUnauthorized={onUnauthorized} />
+      <AddStaff roleChoices={roleChoices} onAdded={showNewest} onUnauthorized={onUnauthorized} />
 
       {/* min-w-0 lets the table's overflow-x-auto actually scroll instead of
           stretching the grid column past the viewport on mobile. */}
@@ -116,11 +122,11 @@ export default function TeamPanel({
                       </td>
                       <td className="px-4 py-3">{s.email}</td>
                       <td className="px-4 py-3">
-                        {isSelf ? (
-                          // An admin can't demote themselves — that's a one-way
-                          // trip out of this screen.
+                        {isSelf || (isSuperAdmin(s.role) && !isSuperAdmin(me.role)) ? (
+                          // Nobody changes their own role, and only a super
+                          // admin can change a super admin's.
                           <span className="rounded-btn bg-brand-gold px-2 py-0.5 text-xs font-bold uppercase text-ink">
-                            {s.role}
+                            {ROLE_LABELS[s.role]}
                           </span>
                         ) : (
                           <select
@@ -129,11 +135,12 @@ export default function TeamPanel({
                             onChange={(e) => changeRole(s, e.target.value as Staff["role"])}
                             aria-label={`Role for ${s.fullName}`}
                             className={`cursor-pointer rounded-btn border border-smoke px-2 py-1 text-xs font-bold uppercase outline-none focus:border-brand-navy disabled:opacity-50 ${
-                              s.role === "admin" ? "bg-brand-gold text-ink" : "bg-mist text-graphite"
+                              s.role === "teacher" ? "bg-mist text-graphite" : "bg-brand-gold text-ink"
                             }`}
                           >
-                            <option value="teacher">Teacher</option>
-                            <option value="admin">Admin</option>
+                            {roleChoices.map((r) => (
+                              <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+                            ))}
                           </select>
                         )}
                       </td>
@@ -145,7 +152,7 @@ export default function TeamPanel({
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        {isSelf ? (
+                        {isSelf || (isSuperAdmin(s.role) && !isSuperAdmin(me.role)) ? (
                           <span className="text-[13px] text-pewter">—</span>
                         ) : (
                           <button
@@ -172,16 +179,18 @@ export default function TeamPanel({
 }
 
 function AddStaff({
+  roleChoices,
   onAdded,
   onUnauthorized,
 }: {
+  roleChoices: StaffRole[];
   onAdded: () => void;
   onUnauthorized: () => void;
 }) {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<"teacher" | "admin">("teacher");
+  const [role, setRole] = useState<StaffRole>("teacher");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
@@ -252,11 +261,12 @@ function AddStaff({
       <select
         id="t-role"
         value={role}
-        onChange={(e) => setRole(e.target.value as "teacher" | "admin")}
+        onChange={(e) => setRole(e.target.value as StaffRole)}
         className="mt-2 w-full cursor-pointer rounded-btn border border-smoke bg-white px-3 py-2.5 text-sm outline-none focus:border-brand-navy"
       >
-        <option value="teacher">Teacher</option>
-        <option value="admin">Administrator</option>
+        {roleChoices.map((r) => (
+          <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+        ))}
       </select>
 
       {error && <p className="mt-3 text-sm font-semibold text-brand-red" role="alert">{error}</p>}

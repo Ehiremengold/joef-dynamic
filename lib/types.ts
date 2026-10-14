@@ -18,7 +18,7 @@ export const LEVEL_NAMES: Record<ClassName, string> = {
 
 export type ExamType = "entrance" | "class";
 export type TakerType = "student" | "candidate";
-export type StaffRole = "admin" | "teacher";
+export type StaffRole = "teacher" | "admin" | "super_admin";
 
 export type Question = {
   id: string;

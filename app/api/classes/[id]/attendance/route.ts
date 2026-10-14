@@ -8,13 +8,14 @@ import {
   upsertStudentAttendance,
 } from "@/lib/data/attendance";
 import { getClassById } from "@/lib/data/classes";
+import { isAdmin } from "@/lib/roles";
 
 type Params = { params: Promise<{ id: string }> };
 
 /** Only an admin, or the class's own class teacher, may enter its attendance. */
 async function assertCanEditAttendance(classId: string) {
   const staff = await requireStaff();
-  if (staff.role === "admin") return staff;
+  if (isAdmin(staff.role)) return staff;
   const cls = await getClassById(classId);
   if (cls?.classTeacherId === staff.id) return staff;
   throw new AuthError("Only an admin or this class's teacher may edit its attendance", 403);

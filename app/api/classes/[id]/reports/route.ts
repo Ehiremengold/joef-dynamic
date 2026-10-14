@@ -6,6 +6,7 @@ import { getStudentById } from "@/lib/data/students";
 import { getTermById } from "@/lib/data/terms";
 import { classForTerm, listClassTermReports, saveTermReport } from "@/lib/data/termReports";
 import { MAX_COMMENT_LENGTH, sanitizeRatings } from "@/lib/reportCard";
+import { isAdmin } from "@/lib/roles";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -16,7 +17,7 @@ export async function GET(req: NextRequest, { params }: Params) {
     const { id } = await params;
     const cls = await getClassById(id);
     if (!cls) return NextResponse.json({ error: "Class not found" }, { status: 404 });
-    if (staff.role !== "admin" && cls.classTeacherId !== staff.id) {
+    if (!isAdmin(staff.role) && cls.classTeacherId !== staff.id) {
       throw new AuthError("Only this class's class teacher or an admin can see its reports", 403);
     }
     const termId = new URL(req.url).searchParams.get("termId") || "";

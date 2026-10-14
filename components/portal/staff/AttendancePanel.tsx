@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { isAdmin } from "@/lib/roles";
 import type { AcademicSession, Class, SignedInStaff, Term } from "@/lib/types";
 
 
@@ -45,7 +46,7 @@ export default function AttendancePanel({
       const allTerms: Term[] = t.terms || [];
       setTerms(allTerms);
       const myClasses: Class[] =
-        me.role === "admin" ? c.classes || [] : (c.classes || []).filter((cl: Class) => cl.classTeacherId === me.id);
+        isAdmin(me.role) ? c.classes || [] : (c.classes || []).filter((cl: Class) => cl.classTeacherId === me.id);
       setClasses(myClasses);
 
       setTermId((prev) => prev || allTerms.find((term) => term.isCurrent)?.id || allTerms[0]?.id || "");
@@ -120,7 +121,7 @@ export default function AttendancePanel({
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="font-display text-xl font-bold tracking-tight">Attendance</h2>
-        {me.role === "admin" && (
+        {isAdmin(me.role) && (
           <button
             type="button"
             onClick={() => setShowTermAdmin((v) => !v)}
@@ -131,7 +132,7 @@ export default function AttendancePanel({
         )}
       </div>
 
-      {showTermAdmin && me.role === "admin" && (
+      {showTermAdmin && isAdmin(me.role) && (
         <TermAdmin
           sessions={sessions}
           terms={terms}
@@ -142,7 +143,7 @@ export default function AttendancePanel({
 
       {classes.length === 0 ? (
         <p className="text-sm text-graphite">
-          {me.role === "admin"
+          {isAdmin(me.role)
             ? "No classes yet, add one under the Classes tab."
             : "You are not assigned as a class teacher for any class yet."}
         </p>

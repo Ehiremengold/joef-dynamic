@@ -1,18 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { errorResponse } from "@/lib/api";
-import { requireStaff } from "@/lib/auth/staff";
+import { requireSuperAdmin } from "@/lib/auth/staff";
 import { deleteAttempt, getAttemptById } from "@/lib/data/attempts";
 
 type Params = { params: Promise<{ id: string }> };
 
 /**
- * DELETE /api/attempts/:id — staff remove a result whose exam has been deleted.
+ * DELETE /api/attempts/:id — a super admin removes a result whose exam has been deleted.
  * A result that still has its exam is cleared from that exam's sittings
  * instead (which is what lets the student sit it again), so it is refused here.
  */
 export async function DELETE(_req: NextRequest, { params }: Params) {
   try {
-    await requireStaff();
+    await requireSuperAdmin();
     const { id } = await params;
     const attempt = await getAttemptById(id);
     if (!attempt) {

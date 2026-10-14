@@ -2,17 +2,23 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { parseQuestions } from "@/lib/questionParser";
-import { CLASSES, type Exam } from "@/lib/types";
+import { examAccess, isAdmin, type ExamAccess } from "@/lib/roles";
+import { CLASSES, type Exam, type SignedInStaff } from "@/lib/types";
+import ApprovalsPanel from "./ApprovalsPanel";
 import EntranceAccess from "./EntranceAccess";
 
 /** Cookie-authenticated fetch; calls onUnauthorized on a 401 so the shell re-checks. */
 type AuthFetch = (url: string, init?: RequestInit) => Promise<Response>;
 
 export default function ExamsPanel({
+  me,
   onUnauthorized,
 }: {
+  me: SignedInStaff;
   onUnauthorized: () => void;
 }) {
+  // Bumped when a deletion is requested, so the approvals list picks it up.
+  const [requests, setRequests] = useState(0);
   const [exams, setExams] = useState<Exam[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -50,6 +56,7 @@ export default function ExamsPanel({
   return (
     <div className="space-y-8">
       <EntranceAccess onUnauthorized={onUnauthorized} />
+      {isAdmin(me.role) && <ApprovalsPanel key={requests} me={me} onDecided={reload} onUnauthorized={onUnauthorized} />}
       <div className="grid gap-8 lg:grid-cols-[380px_1fr]">
         <CreateExam authFetch={authFetch} onCreated={reload} />
       <div className="min-w-0">
@@ -64,7 +71,10 @@ export default function ExamsPanel({
         ) : (
           <div className="mt-4 space-y-4">
             {exams.map((exam) => (
-              <ExamCard key={exam.id} exam={exam} authFetch={authFetch} onChanged={reload} />
+              <ExamCard key={exam.id} exam={exam} authFetch={authFetch} onChanged={reload}
+              access={examAccess(me, exam)}
+              onRequested={() => setRequests((n) => n + 1)}
+            />
             ))}
           </div>
         )}
@@ -182,14 +192,36 @@ function ExamCard({
   exam,
   authFetch,
   onChanged,
+  access,
+  onRequested,
 }: {
   exam: Exam;
   authFetch: AuthFetch;
   onChanged: () => void;
+  access: ExamAccess;
+  onRequested: () => void;
 }) {
   const [panel, setPanel] = useState<"none" | "questions" | "sittings">("none");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  /** Ask a super admin to delete this exam (no question) or one of its questions. */
+  async function requestDeletion(questionIndex?: number) {
+    const what = questionIndex === undefined ? `the exam "${exam.title}"` : `question ${questionIndex + 1}`;
+    const reason = window.prompt(`Why should ${what} be deleted? A super admin will review your request.`);
+    if (!reason?.trim()) return;
+    setError("");
+    setNotice("");
+    const res = await authFetch("/api/deletion-requests", {
+      method: "POST",
+      body: JSON.stringify({ examId: exam.id, questionIndex, reason }),
+    });
+    const d = await res.json();
+    if (!res.ok) return setError(d.error || "Could not send the request");
+    setNotice(`Request to delete ${what} sent to a super admin for approval.`);
+    onRequested();
+  }
   const open = panel === "questions";
 
   /** Save a change to the exam; resolves to whether it was saved. */
@@ -240,11 +272,14 @@ function ExamCard({
             {exam.questions.length} questions · {exam.durationMins} mins
           </p>
         </div>
+        {access === "view" && (
+          <span className="rounded-btn bg-mist px-2 py-0.5 text-xs font-semibold text-graphite">View only</span>
+        )}
         <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold">
           <input
             type="checkbox"
             checked={exam.active}
-            disabled={busy}
+            disabled={busy || access === "view"}
             onChange={(e) => update({ active: e.target.checked })}
             className="h-4 w-4 cursor-pointer accent-brand-green"
           />
@@ -276,21 +311,30 @@ function ExamCard({
         >
           Download results
         </a>
-        <button
-          type="button"
-          onClick={remove}
-          disabled={busy}
-          aria-label={`Delete ${exam.title}`}
-          className="cursor-pointer rounded-btn border border-brand-red px-3 py-1.5 text-sm font-semibold text-brand-red transition-colors duration-200 hover:bg-brand-red hover:text-white"
-        >
-          Delete
-        </button>
+        {access !== "view" && (
+          <button
+            type="button"
+            onClick={() => (access === "manage" ? remove() : requestDeletion())}
+            disabled={busy}
+            aria-label={`${access === "manage" ? "Delete" : "Request deletion of"} ${exam.title}`}
+            className="cursor-pointer rounded-btn border border-brand-red px-3 py-1.5 text-sm font-semibold text-brand-red transition-colors duration-200 hover:bg-brand-red hover:text-white"
+          >
+            {access === "manage" ? "Delete" : "Request deletion"}
+          </button>
+        )}
       </div>
       {error && <p className="px-5 pb-3 text-sm font-semibold text-brand-red">{error}</p>}
+      {notice && <p className="px-5 pb-3 text-sm font-semibold text-brand-green">{notice}</p>}
       {open && (
-        <QuestionEditor exam={exam} busy={busy} onSave={(questions) => update({ questions })} />
+        <QuestionEditor
+          exam={exam}
+          busy={busy}
+          access={access}
+          onSave={(questions) => update({ questions })}
+          onRequestRemoval={(i) => requestDeletion(i)}
+        />
       )}
-      {panel === "sittings" && <SittingsPanel exam={exam} authFetch={authFetch} />}
+      {panel === "sittings" && <SittingsPanel exam={exam} authFetch={authFetch} access={access} />}
     </div>
   );
 }
@@ -323,7 +367,7 @@ function mmss(secs: number) {
  * this is where a student who lost time to a power cut or a dead network gets
  * it back.
  */
-function SittingsPanel({ exam, authFetch }: { exam: Exam; authFetch: AuthFetch }) {
+function SittingsPanel({ exam, authFetch, access }: { exam: Exam; authFetch: AuthFetch; access: ExamAccess }) {
   const [inProgress, setInProgress] = useState<Sitting[]>([]);
   const [submitted, setSubmitted] = useState<Submitted[]>([]);
   const [loading, setLoading] = useState(true);
@@ -418,7 +462,7 @@ function SittingsPanel({ exam, authFetch }: { exam: Exam; authFetch: AuthFetch }
               >
                 {s.secondsLeft === 0 ? "Time up" : mmss(s.secondsLeft)}
               </span>
-              {[5, 10].map((mins) => (
+              {access !== "view" && [5, 10].map((mins) => (
                 <button
                   key={mins}
                   type="button"
@@ -458,14 +502,14 @@ function SittingsPanel({ exam, authFetch }: { exam: Exam; authFetch: AuthFetch }
                 <span className="font-display text-sm font-bold tabular-nums">
                   {a.score}/{a.total}
                 </span>
-                <button
+                {access === "manage" && <button
                   type="button"
                   disabled={busyId === a.id}
                   onClick={() => allowRetake(a)}
                   className="cursor-pointer rounded-btn border border-brand-red px-3 py-1.5 text-sm font-semibold text-brand-red transition-colors duration-200 hover:bg-brand-red hover:text-white disabled:opacity-50"
                 >
                   Allow retake
-                </button>
+                </button>}
               </li>
             ))}
           </ul>
@@ -478,11 +522,15 @@ function SittingsPanel({ exam, authFetch }: { exam: Exam; authFetch: AuthFetch }
 function QuestionEditor({
   exam,
   busy,
+  access,
   onSave,
+  onRequestRemoval,
 }: {
   exam: Exam;
   busy: boolean;
+  access: ExamAccess;
   onSave: (questions: Exam["questions"]) => Promise<boolean>;
+  onRequestRemoval: (questionIndex: number) => void;
 }) {
   const [mode, setMode] = useState<"paste" | "one">("paste");
   const [text, setText] = useState("");
@@ -530,15 +578,19 @@ function QuestionEditor({
                   <span className="mr-2 text-pewter">{qi + 1}.</span>
                   {q.text}
                 </p>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => onSave(exam.questions.filter((_, x) => x !== qi))}
-                  aria-label={`Remove question ${qi + 1}`}
-                  className="cursor-pointer text-sm font-semibold text-brand-red hover:underline"
-                >
-                  Remove
-                </button>
+                {access !== "view" && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() =>
+                      access === "manage" ? onSave(exam.questions.filter((_, x) => x !== qi)) : onRequestRemoval(qi)
+                    }
+                    aria-label={`${access === "manage" ? "Remove" : "Request removal of"} question ${qi + 1}`}
+                    className="cursor-pointer text-sm font-semibold text-brand-red hover:underline"
+                  >
+                    {access === "manage" ? "Remove" : "Request removal"}
+                  </button>
+                )}
               </div>
               <ul className="mt-2 space-y-1 text-sm text-graphite">
                 {q.options.map((opt, oi) => (
@@ -553,6 +605,12 @@ function QuestionEditor({
         </ol>
       )}
 
+      {access === "view" ? (
+        <p className="mt-4 text-[13px] text-pewter">
+          {exam.questions.length === 0 ? "No questions yet. " : ""}This exam belongs to another teacher, so you can view it but not change it.
+        </p>
+      ) : (
+      <>
       <div className="mt-5 flex gap-2">
         {(
           [
@@ -620,6 +678,8 @@ function QuestionEditor({
           {busy ? "Saving…" : "Add question"}
         </button>
       </form>
+      )}
+      </>
       )}
     </div>
   );

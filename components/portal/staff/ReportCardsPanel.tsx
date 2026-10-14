@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { MAX_COMMENT_LENGTH, RATINGS, TRAITS, type Rating, type Ratings, type TermReportRow } from "@/lib/reportCard";
+import { isAdmin } from "@/lib/roles";
 import type { Class, SignedInStaff, Term } from "@/lib/types";
 
 function classLabel(c: Class): string {
@@ -35,7 +36,7 @@ export default function ReportCardsPanel({ me, onUnauthorized }: { me: SignedInS
         const [t, c] = await Promise.all([tRes.json(), cRes.json()]);
         const allTerms: Term[] = t.terms || [];
         const visible: Class[] =
-          me.role === "admin" ? c.classes || [] : (c.classes || []).filter((cl: Class) => cl.classTeacherId === me.id);
+          isAdmin(me.role) ? c.classes || [] : (c.classes || []).filter((cl: Class) => cl.classTeacherId === me.id);
         setTerms(allTerms);
         setClasses(visible);
         setTermId(allTerms.find((term) => term.isCurrent)?.id || allTerms[allTerms.length - 1]?.id || "");
@@ -106,7 +107,7 @@ export default function ReportCardsPanel({ me, onUnauthorized }: { me: SignedInS
   if (classes.length === 0) {
     return (
       <p className="text-sm text-graphite">
-        {me.role === "admin" ? "No classes yet, add one under the Classes tab." : "You are not assigned as a class teacher for any class yet."}
+        {isAdmin(me.role) ? "No classes yet, add one under the Classes tab." : "You are not assigned as a class teacher for any class yet."}
       </p>
     );
   }

@@ -1,6 +1,7 @@
 import "server-only";
 import { authClient } from "@/lib/supabase/serverAuth";
 import { serviceClient } from "@/lib/supabase/server";
+import { isAdmin, isSuperAdmin } from "@/lib/roles";
 import type { Staff, StaffRole } from "@/lib/types";
 
 function mapStaff(row: Record<string, unknown>): Staff {
@@ -52,6 +53,12 @@ export async function requireStaff(): Promise<Staff> {
 
 export async function requireAdmin(): Promise<Staff> {
   const staff = await requireStaff();
-  if (staff.role !== "admin") throw new AuthError("Admins only", 403);
+  if (!isAdmin(staff.role)) throw new AuthError("Admins only", 403);
+  return staff;
+}
+
+export async function requireSuperAdmin(): Promise<Staff> {
+  const staff = await requireStaff();
+  if (!isSuperAdmin(staff.role)) throw new AuthError("Super admins only", 403);
   return staff;
 }
