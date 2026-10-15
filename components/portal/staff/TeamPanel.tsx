@@ -22,6 +22,8 @@ export default function TeamPanel({
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState("");
   const [page, setPage] = useState(1);
+  const [search, setSearch] = useState("");
+  const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
@@ -44,8 +46,12 @@ export default function TeamPanel({
     if (list) setPage(pageCount(list.length));
   }, [load]);
 
+  const needle = search.trim().toLowerCase();
+  const shown = needle
+    ? staff.filter((s) => s.fullName.toLowerCase().includes(needle) || s.email.toLowerCase().includes(needle))
+    : staff;
   // Never past the end, even if the list is shorter than when the page was picked.
-  const shownPage = Math.min(page, pageCount(staff.length));
+  const shownPage = Math.min(page, pageCount(shown.length));
   const { from, to } = pageRange(shownPage);
 
   useEffect(() => {
@@ -73,6 +79,25 @@ export default function TeamPanel({
     }
   }
 
+  async function saveName(s: Staff) {
+    const name = renaming?.name.trim() ?? "";
+    if (name.length < 2) return setError("Enter the staff member's name");
+    if (name === s.fullName) return setRenaming(null);
+    const ok = await confirm({
+      title: "Change this name?",
+      message: (
+        <>
+          “{s.fullName}” becomes “{name}” everywhere in the portal. Report comments they have already signed keep
+          the name they were signed with.
+        </>
+      ),
+      confirmLabel: "Change name",
+    });
+    if (!ok) return;
+    await patch(s, { fullName: name });
+    setRenaming(null);
+  }
+
   async function changeRole(s: Staff, role: Staff["role"]) {
     if (role === s.role) return;
     const ok = await confirm({
@@ -98,6 +123,16 @@ export default function TeamPanel({
           stretching the grid column past the viewport on mobile. */}
       <div className="min-w-0">
         <h2 className="font-display text-xl font-bold tracking-tight">Staff accounts</h2>
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setPage(1);
+          }}
+          placeholder="Search by name or email"
+          className="mt-4 w-full rounded-btn border border-smoke px-3 py-2.5 text-sm outline-none focus:border-brand-navy sm:max-w-sm"
+        />
         {error && (
           <p className="mt-3 text-sm font-semibold text-brand-red" role="alert">
             {error}
@@ -106,6 +141,8 @@ export default function TeamPanel({
         <div className="mt-4 overflow-x-auto rounded-card border border-smoke bg-white">
           {loading && staff.length === 0 ? (
             <p className="p-6 text-sm text-graphite">Loading…</p>
+          ) : shown.length === 0 ? (
+            <p className="p-6 text-sm text-graphite">No staff match that search.</p>
           ) : (
             <table className="w-full min-w-[560px] text-left text-sm">
               <thead>
@@ -118,13 +155,42 @@ export default function TeamPanel({
                 </tr>
               </thead>
               <tbody>
-                {staff.slice(from, to + 1).map((s) => {
+                {shown.slice(from, to + 1).map((s) => {
                   const isSelf = s.email === currentEmail;
+                  // Only a super admin can change a super admin's account.
+                  const locked = isSuperAdmin(s.role) && !isSuperAdmin(me.role);
                   return (
                     <tr key={s.id} className="border-b border-smoke last:border-0">
                       <td className="px-4 py-3 font-semibold">
-                        {s.fullName}
-                        {isSelf && <span className="ml-2 text-[12px] text-pewter">(you)</span>}
+                        {renaming?.id === s.id ? (
+                          <form
+                            className="flex items-center gap-2"
+                            onSubmit={(e) => {
+                              e.preventDefault();
+                              saveName(s);
+                            }}
+                          >
+                            <input
+                              autoFocus
+                              value={renaming.name}
+                              onChange={(e) => setRenaming({ id: s.id, name: e.target.value })}
+                              onKeyDown={(e) => e.key === "Escape" && setRenaming(null)}
+                              aria-label={`New name for ${s.fullName}`}
+                              className="w-full min-w-[160px] rounded-btn border border-smoke px-2 py-1 text-sm font-normal outline-none focus:border-brand-navy"
+                            />
+                            <button type="submit" disabled={busyId === s.id} className="cursor-pointer text-[13px] font-semibold text-brand-navy hover:underline">
+                              Save
+                            </button>
+                            <button type="button" onClick={() => setRenaming(null)} className="cursor-pointer text-[13px] font-semibold text-graphite hover:underline">
+                              Cancel
+                            </button>
+                          </form>
+                        ) : (
+                          <>
+                            {s.fullName}
+                            {isSelf && <span className="ml-2 text-[12px] text-pewter">(you)</span>}
+                          </>
+                        )}
                       </td>
                       <td className="px-4 py-3">{s.email}</td>
                       <td className="px-4 py-3">
@@ -158,18 +224,29 @@ export default function TeamPanel({
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        {isSelf || (isSuperAdmin(s.role) && !isSuperAdmin(me.role)) ? (
-                          <span className="text-[13px] text-pewter">—</span>
-                        ) : (
-                          <button
-                            type="button"
-                            disabled={busyId === s.id}
-                            onClick={() => patch(s, { active: !s.active })}
-                            className="cursor-pointer text-[13px] font-semibold text-brand-red hover:underline disabled:opacity-50"
-                          >
-                            {s.active ? "Deactivate" : "Reactivate"}
-                          </button>
-                        )}
+                        <div className="flex gap-3 whitespace-nowrap">
+                          {!locked && renaming?.id !== s.id && (
+                            <button
+                              type="button"
+                              disabled={busyId === s.id}
+                              onClick={() => setRenaming({ id: s.id, name: s.fullName })}
+                              className="cursor-pointer text-[13px] font-semibold text-brand-navy hover:underline disabled:opacity-50"
+                            >
+                              Edit name
+                            </button>
+                          )}
+                          {!isSelf && !locked && (
+                            <button
+                              type="button"
+                              disabled={busyId === s.id}
+                              onClick={() => patch(s, { active: !s.active })}
+                              className="cursor-pointer text-[13px] font-semibold text-brand-red hover:underline disabled:opacity-50"
+                            >
+                              {s.active ? "Deactivate" : "Reactivate"}
+                            </button>
+                          )}
+                          {locked && <span className="text-[13px] text-pewter">—</span>}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -178,7 +255,7 @@ export default function TeamPanel({
             </table>
           )}
         </div>
-        <Pagination page={shownPage} total={staff.length} onPage={setPage} />
+        <Pagination page={shownPage} total={shown.length} onPage={setPage} />
       </div>
     </div>
   );
