@@ -38,7 +38,3 @@ export function defaultTargetSession(sessions: AcademicSession[], currentTerm: T
 
 /** "2026/2027" → "2026", to compare against a student's entry year. */
 export const sessionStartYear = (name: string): string => name.slice(0, 4);
-
-export function classLabel(c: Pick<Class, "campusName" | "level" | "arm">): string {
-  return `${c.campusName ?? "Campus"} · ${c.level}${c.arm ? c.arm : ""}`;
-}

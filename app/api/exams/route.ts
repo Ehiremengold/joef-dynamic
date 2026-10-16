@@ -36,9 +36,9 @@ export async function GET(req: NextRequest) {
     // Takers only ever see exams appropriate to who they are.
     let exams;
     if (taker.kind === "candidate") {
-      exams = await listExams({ type: "entrance" });
+      exams = await listExams({ type: "entrance", activeOnly: true });
     } else {
-      exams = await listExams({ type: "class", className: taker.className });
+      exams = await listExams({ type: "class", className: taker.className, activeOnly: true });
     }
     const open = exams.filter((e) => isOpen(e) && e.questions.length > 0);
     return NextResponse.json({ exams: open.map(toPublicExam) });

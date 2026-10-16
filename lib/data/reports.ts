@@ -1,7 +1,6 @@
 import "server-only";
 import { serviceClient } from "@/lib/supabase/server";
 import { LEVEL_NAMES, type ClassName, type ReportSheet, type Term } from "@/lib/types";
-import { getStudentAttendanceForTerm } from "./attendance";
 import { mapTermReport, TERM_REPORT_SELECT } from "./termReports";
 
 type Row = Record<string, unknown>;
@@ -42,31 +41,47 @@ export async function listReportSheets(studentId: string): Promise<ReportSheet[]
   }
   const classIds = [...new Set(scores.map((s) => s.class_id as string | null).filter(Boolean))] as string[];
 
-  const [{ data: summaries }, { data: order }, { data: reports }] = await Promise.all([
-    supa
-      .from("term_class_summary")
-      .select("term_id, class_id, students, average_percent")
-      .in("term_id", [...byTerm.keys()]),
-    supa.from("class_subjects").select("class_id, subject_id, position").in("class_id", classIds),
-    supa
-      .from("term_reports")
-      .select(TERM_REPORT_SELECT)
-      .eq("student_id", studentId),
-  ]);
+  const termIds = [...byTerm.keys()];
+  // Everything else a sheet needs, for every term at once: a few batched
+  // queries rather than a round of them per term.
+  const [{ data: summaries }, { data: order }, { data: reports }, { data: classDays }, { data: present }] =
+    await Promise.all([
+      supa
+        .from("term_class_summary")
+        .select("term_id, class_id, students, average_percent")
+        .in("term_id", termIds)
+        .in("class_id", classIds),
+      supa.from("class_subjects").select("class_id, subject_id, position").in("class_id", classIds),
+      supa.from("term_reports").select(TERM_REPORT_SELECT).eq("student_id", studentId),
+      supa
+        .from("class_term_attendance")
+        .select("class_id, term_id, total_days")
+        .in("term_id", termIds)
+        .in("class_id", classIds),
+      supa.from("student_attendance").select("term_id, days_present").eq("student_id", studentId).in("term_id", termIds),
+    ]);
+  const totalDaysFor = new Map((classDays ?? []).map((r) => [`${r.term_id}|${r.class_id}`, r.total_days as number]));
+  const presentFor = new Map((present ?? []).map((r) => [r.term_id as string, r.days_present as number]));
+  /** As getStudentAttendanceForTerm: null when neither figure was entered. */
+  const attendanceFor = (termId: string, classId: string) => {
+    const totalDays = totalDaysFor.get(`${termId}|${classId}`);
+    const daysPresent = presentFor.get(termId);
+    if (totalDays === undefined && daysPresent === undefined) return null;
+    return { totalDays: totalDays ?? 0, daysPresent: daysPresent ?? 0 };
+  };
   const reportFor = new Map((reports ?? []).map((r) => [r.term_id as string, r as Row]));
   const summaryFor = new Map((summaries ?? []).map((r) => [`${r.term_id}|${r.class_id}`, r]));
   const positionFor = new Map(
     (order ?? []).map((r) => [`${r.class_id}|${r.subject_id}`, r.position as number | null])
   );
 
-  const sheets = await Promise.all(
-    [...byTerm].map(async ([termId, rows]) => {
+  const sheets = [...byTerm].map(([termId, rows]) => {
       const first = rows[0];
       const term = first.terms as Row;
       const classId = first.class_id as string | null;
       const summary = summaryFor.get(`${termId}|${classId}`);
       const report = reportFor.get(termId);
-      const attendance = classId ? await getStudentAttendanceForTerm(studentId, classId, termId) : null;
+      const attendance = classId ? attendanceFor(termId, classId) : null;
 
       const subjects = rows
         .map((r) => ({
@@ -93,8 +108,7 @@ export async function listReportSheets(studentId: string): Promise<ReportSheet[]
         report: mapTermReport(report),
       };
       return sheet;
-    })
-  );
+    });
 
   return sheets.sort(
     (a, b) =>

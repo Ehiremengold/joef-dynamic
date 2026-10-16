@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { errorResponse } from "@/lib/api";
 import { getTakerSession } from "@/lib/auth/session";
 import { getExam, isOpen } from "@/lib/data/exams";
-import { listAttempts } from "@/lib/data/attempts";
+import { hasAttempt } from "@/lib/data/attempts";
 import {
   isExpired,
   saveAnswers,
@@ -44,19 +44,6 @@ async function resolve(req: NextRequest): Promise<
   return { taker, exam, body: body ?? {} };
 }
 
-/** Has this taker already got a finished attempt on record for this exam? */
-async function alreadySubmitted(
-  examId: string,
-  taker: TakerSession
-): Promise<boolean> {
-  const done = await listAttempts({
-    examId,
-    ...(taker.kind === "student" ? { studentId: taker.id } : {}),
-  });
-  return taker.kind === "student"
-    ? done.length > 0
-    : done.some((a) => a.candidateId === taker.id);
-}
 
 /**
  * POST /api/attempts/session — start a sitting, or resume one already running.
@@ -73,7 +60,7 @@ export async function POST(req: NextRequest) {
     if ("error" in r) return r.error;
     const { taker, exam } = r;
 
-    if (await alreadySubmitted(exam.id, taker)) {
+    if (await hasAttempt(exam.id, taker)) {
       return NextResponse.json(
         { error: "You have already taken this test" },
         { status: 409 }

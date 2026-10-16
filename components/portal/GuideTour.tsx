@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef } from "react";
-import { driver, type DriveStep, type Driver } from "driver.js";
+import type { DriveStep, Driver } from "driver.js";
 import "driver.js/dist/driver.css";
 
 /**
@@ -33,7 +33,10 @@ const seenKey = (id: string) => `jdc-tour-seen:${id}`;
 // Asked of driver.js itself rather than tracked from its "destroyed" hook,
 // which doesn't always fire when a tour is closed mid-animation.
 let current: Driver | null = null;
-const tourShowing = () => current?.isActive() === true || document.querySelector(".driver-popover") !== null;
+// True while driver.js is still downloading for a tour about to start.
+let starting = false;
+const tourShowing = () =>
+  starting || current?.isActive() === true || document.querySelector(".driver-popover") !== null;
 
 function hasSeen(id: string): boolean {
   try {
@@ -78,8 +81,12 @@ export default function GuideTour({
   const stepsRef = useRef(steps);
   stepsRef.current = steps;
 
-  /** Shows the tour; false when none of its steps are on the page. */
-  const start = useCallback((): boolean => {
+  /**
+   * Shows the tour; false when none of its steps are on the page. driver.js
+   * is only downloaded here, the first time a tour actually runs, so it isn't
+   * part of every portal page's first load.
+   */
+  const start = useCallback(async (): Promise<boolean> => {
     const present: DriveStep[] = stepsRef.current
       .filter((s) => (!s.target || onPage(s.target)) && (!s.unless || !onPage(s.unless)))
       .map((s) => ({
@@ -88,6 +95,13 @@ export default function GuideTour({
       }));
     if (present.length === 0) return false;
     markSeen(id);
+    starting = true;
+    let driver: typeof import("driver.js").driver;
+    try {
+      ({ driver } = await import("driver.js"));
+    } finally {
+      starting = false;
+    }
     current = driver({
       steps: present,
       showProgress: present.length > 1,
@@ -121,7 +135,7 @@ export default function GuideTour({
       last = now;
       if (!settled) return (timer = setTimeout(check, 400));
       if (tourShowing()) return (timer = setTimeout(check, 500));
-      if (!hasSeen(id)) start();
+      if (!hasSeen(id)) void start();
     };
     timer = setTimeout(check, autoStartDelay);
     return () => clearTimeout(timer);
@@ -130,7 +144,7 @@ export default function GuideTour({
   return (
     <button
       type="button"
-      onClick={() => start()}
+      onClick={() => void start()}
       className={`inline-flex cursor-pointer items-center gap-1.5 rounded-btn px-3 py-2 text-sm font-semibold transition-colors duration-200 ${
         tone === "dark"
           ? "border border-white/40 text-white hover:bg-white hover:text-ink"

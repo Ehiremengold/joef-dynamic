@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { apiKey, useApi, useInvalidate } from "@/lib/client/api";
+import { apiKey, SIGNED_IN, useApi, useInvalidate } from "@/lib/client/api";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import TestRunner, { type SubmittedResult } from "@/components/portal/TestRunner";
@@ -15,7 +15,7 @@ type Me = { fullName: string; className: ClassName; admissionNumber?: string } |
 
 export default function CbtPage() {
   const client = useQueryClient();
-  const meQ = useApi<{ kind: string | null; taker?: { kind: string; name: string; className: ClassName } }>("/api/me");
+  const meQ = useApi<{ kind: string | null; taker?: { kind: string; name: string; className: ClassName } }>("/api/me", undefined, SIGNED_IN);
   const me: Me =
     meQ.data?.kind === "taker" && meQ.data.taker?.kind === "student"
       ? { fullName: meQ.data.taker.name, className: meQ.data.taker.className }

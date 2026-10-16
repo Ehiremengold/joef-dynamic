@@ -1,6 +1,6 @@
 import "server-only";
 import { serviceClient } from "@/lib/supabase/server";
-import { classLabel } from "@/lib/promotion";
+import { classLabel } from "@/lib/classes";
 import type { ClassName, Promotion, PromotionCandidate, PromotionOutcome } from "@/lib/types";
 
 type Row = Record<string, unknown>;

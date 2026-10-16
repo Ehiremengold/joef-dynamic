@@ -8,27 +8,21 @@ import {
   promoteStudents,
   type Move,
 } from "@/lib/data/promotions";
-import { listSessions } from "@/lib/data/terms";
+import { getSessionById } from "@/lib/data/terms";
 import { isAdmin } from "@/lib/roles";
-import type { PromotionOutcome } from "@/lib/types";
+import { PROMOTION_OUTCOMES, type PromotionOutcome } from "@/lib/types";
 
 type Params = { params: Promise<{ id: string }> };
 
-const OUTCOMES: PromotionOutcome[] = ["promoted", "repeated", "graduated"];
-
 /** Only an admin, or the class's own class teacher, may promote its students. */
 async function classForPromotion(id: string) {
-  const staff = await requireStaff();
-  const cls = await getClassById(id);
+  // Neither lookup needs the other: run them together.
+  const [staff, cls] = await Promise.all([requireStaff(), getClassById(id)]);
   if (!cls) throw new AuthError("Class not found", 404);
   if (!isAdmin(staff.role) && cls.classTeacherId !== staff.id) {
     throw new AuthError("Only an admin or this class's teacher may promote its students", 403);
   }
   return { staff, cls };
-}
-
-async function sessionOrNull(id: string) {
-  return (await listSessions()).find((s) => s.id === id) ?? null;
 }
 
 /**
@@ -38,15 +32,21 @@ async function sessionOrNull(id: string) {
 export async function GET(req: NextRequest, { params }: Params) {
   try {
     const { id } = await params;
-    await classForPromotion(id);
     const sessionId = new URL(req.url).searchParams.get("sessionId") || "";
-    if (!(sessionId && (await sessionOrNull(sessionId)))) {
+    if (!sessionId) {
       return NextResponse.json({ error: "Choose a valid session" }, { status: 400 });
     }
-    const [students, done] = await Promise.all([
+    // The permission check, the session check and the reads are independent,
+    // so they share one round trip; nothing is returned unless all pass.
+    const [, session, students, done] = await Promise.all([
+      classForPromotion(id),
+      getSessionById(sessionId),
       listPromotionCandidates(id, sessionId),
       listClassPromotions(id, sessionId),
     ]);
+    if (!session) {
+      return NextResponse.json({ error: "Choose a valid session" }, { status: 400 });
+    }
     return NextResponse.json({ students, done });
   } catch (e) {
     return errorResponse(e);
@@ -66,14 +66,20 @@ export async function POST(req: NextRequest, { params }: Params) {
     const sessionId = String(body?.sessionId || "");
     const rawMoves: unknown[] = Array.isArray(body?.moves) ? body.moves : [];
 
-    if (!(await sessionOrNull(sessionId))) {
+    if (!sessionId) {
       return NextResponse.json({ error: "Choose a valid session" }, { status: 400 });
     }
     if (rawMoves.length === 0) {
       return NextResponse.json({ error: "Choose at least one student" }, { status: 400 });
     }
-
-    const waiting = new Set((await listPromotionCandidates(id, sessionId)).map((s) => s.id));
+    const [session, candidates] = await Promise.all([
+      getSessionById(sessionId),
+      listPromotionCandidates(id, sessionId),
+    ]);
+    if (!session) {
+      return NextResponse.json({ error: "Choose a valid session" }, { status: 400 });
+    }
+    const waiting = new Set(candidates.map((s) => s.id));
     const moves: Move[] = [];
     for (const raw of rawMoves) {
       const m = raw as Record<string, unknown>;
@@ -86,7 +92,7 @@ export async function POST(req: NextRequest, { params }: Params) {
           { status: 400 }
         );
       }
-      if (!OUTCOMES.includes(outcome)) {
+      if (!PROMOTION_OUTCOMES.includes(outcome)) {
         return NextResponse.json({ error: "Unknown promotion choice" }, { status: 400 });
       }
       if (outcome === "graduated" && cls.level !== "SS3") {

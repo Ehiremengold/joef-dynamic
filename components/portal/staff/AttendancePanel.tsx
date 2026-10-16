@@ -1,16 +1,14 @@
 "use client";
 
+import { classLabel } from "@/lib/classes";
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { apiKey, EDITABLE, sendJson, useApi, useInvalidate } from "@/lib/client/api";
+import { apiKey, EDITABLE, sendJson, useApi } from "@/lib/client/api";
 import { isAdmin } from "@/lib/roles";
 import type { Class, SignedInStaff, Term } from "@/lib/types";
 
 type AttendanceRow = { studentId: string; fullName: string; admissionNumber: string; daysPresent: number };
 
-function classLabel(c: Class): string {
-  return `${c.campusName ?? "Campus"} · ${c.level}${c.arm ? c.arm : ""}`;
-}
 
 export default function AttendancePanel({
   me,
@@ -20,7 +18,6 @@ export default function AttendancePanel({
   onUnauthorized: () => void;
 }) {
   const client = useQueryClient();
-  const invalidate = useInvalidate();
   const termsQ = useApi<{ terms: Term[] }>("/api/terms", onUnauthorized);
   const classesQ = useApi<{ classes: Class[] }>("/api/classes", onUnauthorized);
   const [chosenTerm, setTermId] = useState("");
@@ -69,10 +66,10 @@ export default function AttendancePanel({
         totalDays,
         students: rows.map((r) => ({ studentId: r.studentId, daysPresent: r.daysPresent })),
       });
-      // What was typed is now what is saved: put it in the cache and drop the edits.
+      // What was typed is now what is saved: put it in the cache (no need to
+      // download it again) and drop the edits.
       if (sheetUrl) client.setQueryData(apiKey(sheetUrl), { totalDays, students: rows });
       setEdits(null);
-      invalidate(`/api/classes/${classId}/attendance`);
       setNotice("Attendance saved.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save attendance");

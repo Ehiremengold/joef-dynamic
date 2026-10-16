@@ -53,45 +53,61 @@ export function isOpen(exam: Exam): boolean {
   return true;
 }
 
+const EXAM_COLUMNS =
+  "id, type, class_name, title, duration_mins, active, opens_at, closes_at, created_by, created_at";
+const QUESTION_COLUMNS = "id, exam_id, text, options, correct_index, position";
+// Supabase returns at most 1000 rows per select; read questions a page at a time.
+const QUESTION_PAGE = 1000;
+
+/** Every question of these exams, in order, grouped by exam. */
 async function loadQuestions(examIds: string[]): Promise<Map<string, Question[]>> {
   const map = new Map<string, Question[]>();
   if (examIds.length === 0) return map;
-  const { data } = await serviceClient()
-    .from("questions")
-    .select("*")
-    .in("exam_id", examIds)
-    .order("position", { ascending: true });
-  for (const r of data ?? []) {
-    const eid = r.exam_id as string;
-    if (!map.has(eid)) map.set(eid, []);
-    map.get(eid)!.push(mapQuestion(r));
+  for (let from = 0; ; from += QUESTION_PAGE) {
+    const { data, error } = await serviceClient()
+      .from("questions")
+      .select(QUESTION_COLUMNS)
+      .in("exam_id", examIds)
+      .order("exam_id")
+      .order("position", { ascending: true })
+      .order("id")
+      .range(from, from + QUESTION_PAGE - 1);
+    if (error) throw new Error(error.message);
+    for (const r of data ?? []) {
+      const eid = r.exam_id as string;
+      if (!map.has(eid)) map.set(eid, []);
+      map.get(eid)!.push(mapQuestion(r));
+    }
+    if (!data || data.length < QUESTION_PAGE) return map;
   }
-  return map;
 }
 
 export async function listExams(filter: {
   type?: ExamType;
   className?: string;
+  /** Takers only ever see active exams, so don't load the rest's questions. */
+  activeOnly?: boolean;
 }): Promise<Exam[]> {
-  let q = serviceClient().from("exams").select("*").order("created_at", {
+  let q = serviceClient().from("exams").select(EXAM_COLUMNS).order("created_at", {
     ascending: false,
   });
   if (filter.type) q = q.eq("type", filter.type);
   if (filter.className) q = q.eq("class_name", filter.className);
-  const { data } = await q;
+  if (filter.activeOnly) q = q.eq("active", true);
+  const { data, error } = await q;
+  if (error) throw new Error(error.message);
   const rows = data ?? [];
   const qmap = await loadQuestions(rows.map((r) => r.id as string));
   return rows.map((r) => mapExam(r, qmap.get(r.id as string) ?? []));
 }
 
 export async function getExam(id: string): Promise<Exam | null> {
-  const { data } = await serviceClient()
-    .from("exams")
-    .select("*")
-    .eq("id", id)
-    .maybeSingle();
+  // The exam and its questions don't depend on each other: fetch both at once.
+  const [{ data }, qmap] = await Promise.all([
+    serviceClient().from("exams").select(EXAM_COLUMNS).eq("id", id).maybeSingle(),
+    loadQuestions([id]),
+  ]);
   if (!data) return null;
-  const qmap = await loadQuestions([id]);
   return mapExam(data, qmap.get(id) ?? []);
 }
 

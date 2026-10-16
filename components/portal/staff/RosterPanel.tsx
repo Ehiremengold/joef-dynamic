@@ -1,5 +1,6 @@
 "use client";
 
+import { classLabel } from "@/lib/classes";
 import { useEffect, useState } from "react";
 import { EDITABLE, useApi, useInvalidate } from "@/lib/client/api";
 import { CLASSES, type Class, type Student, type Subject } from "@/lib/types";
@@ -14,9 +15,6 @@ const YEARS = ["2024", "2025", "2026", "2027"];
 const HEAD = "px-3 py-3 font-semibold first:pl-4 last:pr-4";
 const CELL = "px-3 py-2.5 first:pl-4 last:pr-4";
 
-function classLabel(c: Class): string {
-  return `${c.campusName ?? "Campus"} · ${c.level}${c.arm ? c.arm : ""}`;
-}
 
 export default function RosterPanel({
   onUnauthorized,

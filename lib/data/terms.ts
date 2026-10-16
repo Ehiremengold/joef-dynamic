@@ -43,6 +43,12 @@ export async function listSessions(): Promise<AcademicSession[]> {
   return currentId ? sessions.map((s) => ({ ...s, isCurrent: s.id === currentId })) : sessions;
 }
 
+/** One session by id (its stored flags, not the derived current session). */
+export async function getSessionById(id: string): Promise<AcademicSession | null> {
+  const { data } = await serviceClient().from("academic_sessions").select("*").eq("id", id).maybeSingle();
+  return data ? mapSession(data) : null;
+}
+
 export async function createSession(name: string): Promise<AcademicSession> {
   const { data, error } = await serviceClient()
     .from("academic_sessions")

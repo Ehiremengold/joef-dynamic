@@ -234,11 +234,11 @@ async function main() {
     let cls = fromHeading;
     if (fromCell && fromCell.level !== fromHeading.level) {
       cls = { ...fromHeading, level: fromCell.level, arm: fromCell.arm };
-      notes.push(`row ${r.row} ${r.fullName}: heading says ${fromHeading.level}, Current Class says ${fromCell.level} — using ${fromCell.level}`);
+      notes.push(`row ${r.row} ${r.fullName}: heading says ${fromHeading.level}, Current Class says ${fromCell.level}, so using ${fromCell.level}`);
     }
     const match = findExisting(r);
     if (match) {
-      skipped.push([r.row, r.fullName, `already in the portal as ${match.full_name} (${match.admission_number}, ${match.class_name}) — promote from the Promotion tab`]);
+      skipped.push([r.row, r.fullName, `already in the portal as ${match.full_name} (${match.admission_number}, ${match.class_name}). Promote from the Promotion tab`]);
       continue;
     }
     if (r.rawBirthDate && !r.dateOfBirth) notes.push(`row ${r.row} ${r.fullName}: birth date "${r.rawBirthDate}" not understood, left blank`);
@@ -254,14 +254,14 @@ async function main() {
   for (const a of add) perClass.set(label(a.cls), (perClass.get(label(a.cls)) ?? 0) + 1);
   for (const [k, n] of perClass) console.log(`  ${String(n).padStart(3)}  ${k}${missingClasses.some((c) => label(c) === k) ? "  (class will be created)" : ""}`);
   console.log(`\nSkipped: ${skipped.length}`);
-  for (const [row, name, why] of skipped) console.log(`  row ${row}  ${name} — ${why}`);
+  for (const [row, name, why] of skipped) console.log(`  row ${row}  ${name}: ${why}`);
   if (notes.length) {
     console.log(`\nNotes`);
     for (const n of notes) console.log(`  ${n}`);
   }
 
   if (!shouldApply) {
-    console.log("\nDry run — nothing was written. Re-run with --apply to add these students.");
+    console.log("\nDry run: nothing was written. Re-run with --apply to add these students.");
     return;
   }
 

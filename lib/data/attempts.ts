@@ -94,6 +94,23 @@ function attemptsQuery(filter: AttemptFilter, count?: "exact") {
   return q.order("submitted_at", { ascending: false }).order("id", { ascending: true });
 }
 
+/**
+ * Has this taker already got a finished attempt for the exam? A count on the
+ * one-attempt-per-taker unique index, so no rows come back.
+ */
+export async function hasAttempt(
+  examId: string,
+  taker: { kind: "student" | "candidate"; id: string }
+): Promise<boolean> {
+  const { count, error } = await serviceClient()
+    .from("attempts")
+    .select("id", { count: "exact", head: true })
+    .eq("exam_id", examId)
+    .eq(taker.kind === "student" ? "student_id" : "candidate_id", taker.id);
+  if (error) throw new Error(error.message);
+  return (count ?? 0) > 0;
+}
+
 export async function listAttempts(filter: AttemptFilter): Promise<Attempt[]> {
   const { data } = await attemptsQuery(filter);
   return (data ?? []).map(mapAttempt);

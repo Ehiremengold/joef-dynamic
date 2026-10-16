@@ -201,7 +201,8 @@ export type StudentAttendance = {
   updatedAt: string;
 };
 
-export type PromotionOutcome = "promoted" | "repeated" | "graduated";
+export const PROMOTION_OUTCOMES = ["promoted", "repeated", "graduated"] as const;
+export type PromotionOutcome = (typeof PROMOTION_OUTCOMES)[number];
 
 /** A student still waiting to be moved into a session. */
 export type PromotionCandidate = {

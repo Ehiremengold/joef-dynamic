@@ -15,21 +15,27 @@ function mapStaff(row: Record<string, unknown>): Staff {
   };
 }
 
+const STAFF_COLUMNS = "id, full_name, email, role, active, created_at";
+
 /**
  * Resolve the signed-in staff member from the Supabase Auth session, or null.
  * Confirms the user still has an active staff profile.
+ *
+ * getClaims() verifies the session token's signature and expiry. With the
+ * project's asymmetric JWT signing keys turned on it does so locally, with no
+ * call to Supabase Auth; with the older shared-secret keys it asks Supabase
+ * (the same call getUser() made), so it is never slower.
  */
 export async function currentStaff(): Promise<Staff | null> {
   const supa = await authClient();
-  const {
-    data: { user },
-  } = await supa.auth.getUser();
-  if (!user) return null;
+  const { data: auth } = await supa.auth.getClaims();
+  const userId = auth?.claims?.sub;
+  if (!userId) return null;
 
   const { data } = await serviceClient()
     .from("staff")
-    .select("*")
-    .eq("id", user.id)
+    .select(STAFF_COLUMNS)
+    .eq("id", userId)
     .eq("active", true)
     .maybeSingle();
 

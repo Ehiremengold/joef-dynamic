@@ -102,6 +102,13 @@ export function useApi<T>(
  * one; after that it is only re-read when the viewer switches class/term or
  * saves — never on window focus, so nothing changes under someone's typing.
  */
+/**
+ * For "who is signed in" (/api/me). It only changes on sign-in, sign-out or an
+ * expired session, and each of those refreshes it directly (an API answering
+ * 401 calls onUnauthorized), so don't re-ask on every window focus.
+ */
+export const SIGNED_IN = { staleTime: 10 * 60_000, refetchOnWindowFocus: false };
+
 export const EDITABLE = {
   staleTime: 0,
   refetchOnWindowFocus: false,
@@ -111,12 +118,23 @@ export const EDITABLE = {
 /**
  * After a save: refresh every cached answer under these API paths, e.g.
  * invalidate("/api/classes") refreshes /api/classes and /api/classes?campusId=…
- * (but not /api/classes/:id/…, which has a path of its own).
+ * (but not /api/classes/:id/…, which has a path of its own). A path ending in
+ * "/*" also covers everything below it: "/api/classes/*" is every class's
+ * attendance, reports, subjects and promotion lists.
  */
 export function useInvalidate() {
   const client = useQueryClient();
   return useCallback(
-    (...paths: string[]) => Promise.all(paths.map((p) => client.invalidateQueries({ queryKey: [p] }))),
+    (...paths: string[]) =>
+      Promise.all(
+        paths.map((p) =>
+          p.endsWith("/*")
+            ? client.invalidateQueries({
+                predicate: (q) => typeof q.queryKey[0] === "string" && q.queryKey[0].startsWith(p.slice(0, -1)),
+              })
+            : client.invalidateQueries({ queryKey: [p] })
+        )
+      ),
     [client]
   );
 }

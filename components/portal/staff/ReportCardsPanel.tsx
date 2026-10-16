@@ -1,5 +1,6 @@
 "use client";
 
+import { classLabel } from "@/lib/classes";
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError, apiKey, EDITABLE, sendJson, useApi } from "@/lib/client/api";
@@ -7,9 +8,6 @@ import { MAX_COMMENT_LENGTH, RATINGS, TRAITS, type Rating, type Ratings, type Te
 import { isAdmin } from "@/lib/roles";
 import type { Class, SignedInStaff, Term } from "@/lib/types";
 
-function classLabel(c: Class): string {
-  return `${c.campusName ?? "Campus"} · ${c.level}${c.arm ? c.arm : ""}`;
-}
 
 /**
  * Where a class teacher rates each student's "Effective Areas" and writes

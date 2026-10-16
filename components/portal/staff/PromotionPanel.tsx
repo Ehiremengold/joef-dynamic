@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { ApiError, EDITABLE, sendJson, useApi } from "@/lib/client/api";
+import { ApiError, EDITABLE, sendJson, useApi, useInvalidate } from "@/lib/client/api";
 import { isAdmin } from "@/lib/roles";
-import { classLabel, defaultTargetSession, nextLevel, sessionStartYear, suggestNextClass } from "@/lib/promotion";
+import { classLabel } from "@/lib/classes";
+import { defaultTargetSession, nextLevel, sessionStartYear, suggestNextClass } from "@/lib/promotion";
 import type { AcademicSession, Class, Promotion, PromotionCandidate, SignedInStaff, Term } from "@/lib/types";
 import { useConfirm } from "./useConfirm";
 
@@ -28,7 +28,7 @@ export default function PromotionPanel({
   onUnauthorized: () => void;
 }) {
   const { confirm, dialog } = useConfirm();
-  const client = useQueryClient();
+  const invalidate = useInvalidate();
   const sessionsQ = useApi<{ sessions: AcademicSession[] }>("/api/sessions", onUnauthorized);
   const termsQ = useApi<{ terms: Term[] }>("/api/terms", onUnauthorized);
   const classesQ = useApi<{ classes: Class[] }>("/api/classes", onUnauthorized);
@@ -81,8 +81,11 @@ export default function PromotionPanel({
   const changes = plan.url === promotionUrl ? plan.rows : {};
   const rowFor = (st: PromotionCandidate): RowPlan => ({ ...defaultRow(st), ...changes[st.id] });
 
-  /** A move changes rosters, attendance and report lists too: mark everything stale. */
-  const refreshAll = () => client.invalidateQueries();
+  /**
+   * A move changes who is in which class: the roster, and every class's
+   * attendance, report-card and promotion lists. Nothing else.
+   */
+  const refreshAfterMove = () => invalidate("/api/students", "/api/classes/*");
 
   const update = (id: string, patch: Partial<RowPlan>) =>
     setPlan({ url: promotionUrl, rows: { ...changes, [id]: { ...changes[id], ...patch } } });
@@ -141,8 +144,8 @@ export default function PromotionPanel({
         })),
       });
       setPlan({ url: null, rows: {} });
-      await refreshAll();
-      setNotice(`${d.moved} student${d.moved === 1 ? "" : "s"} moved into ${session.name}.`);
+      await refreshAfterMove();
+      setNotice(`${nStudents(d.moved)} moved into ${session.name}.`);
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) return onUnauthorized();
       setError(e instanceof Error ? e.message : "Could not promote the class");
@@ -160,7 +163,7 @@ export default function PromotionPanel({
     if (!ok) return;
     try {
       await sendJson(`/api/promotions/${p.id}`, "DELETE");
-      await refreshAll();
+      await refreshAfterMove();
       setNotice(`${p.fullName} is back in ${cls ? classLabel(cls) : "this class"}.`);
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) return onUnauthorized();

@@ -19,7 +19,7 @@ import SessionsPanel from "@/components/portal/staff/SessionsPanel";
 import GuideTour from "@/components/portal/GuideTour";
 import { STAFF_SIGNIN_TOUR, staffDashboardTour, staffTabTour, type StaffTab } from "@/lib/tours";
 import { isAdmin, ROLE_LABELS } from "@/lib/roles";
-import { apiKey, useApi } from "@/lib/client/api";
+import { apiKey, SIGNED_IN, useApi } from "@/lib/client/api";
 import type { SignedInStaff, Term } from "@/lib/types";
 
 type Me = SignedInStaff | null;
@@ -27,7 +27,7 @@ type Tab = StaffTab;
 
 function useStaff() {
   const client = useQueryClient();
-  const { data, isPending, refetch } = useApi<{ kind: string | null; staff?: SignedInStaff }>("/api/me");
+  const { data, isPending, refetch } = useApi<{ kind: string | null; staff?: SignedInStaff }>("/api/me", undefined, SIGNED_IN);
   const me: Me = data?.kind === "staff" && data.staff ? data.staff : null;
 
   const refresh = useCallback(() => {
@@ -173,7 +173,9 @@ export default function StaffPage() {
           ) : (
             <>
               <div className="mb-4 flex justify-end">
-                {/* Starts by itself the first time a tab is opened, after the page tour. */}
+                {/* Starts by itself the first time a tab is opened, after the page tour.
+                    Promotion keeps the id its tour had before every tab got one,
+                    so people who already saw it aren't shown it again. */}
                 <GuideTour
                   key={tab}
                   id={tab === "promotion" ? "staff-promotion-v1" : `staff-tab-${tab}-v1`}
