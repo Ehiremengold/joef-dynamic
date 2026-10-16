@@ -315,8 +315,8 @@ const STUDENTS_TOUR: TourStep[] = [
   },
   {
     target: "students-search",
-    title: "Find a student",
-    text: "Search by name or show one class level. The roster is in alphabetical order, a page at a time.",
+    title: "Find students",
+    text: "Search by name, then narrow the list. Campus and Class: choose a campus to pick one of its classes and arms (e.g. Obalende · JS2A), or leave the campus open to see a level on every campus. Status: active students, or those who have left. Entry year: the year they joined. Had results in: students with marks recorded in that session, or one term of it. The count shows how many match, and “Clear filters” starts again.",
   },
   {
     target: "students-table",

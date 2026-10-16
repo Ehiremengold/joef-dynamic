@@ -24,22 +24,60 @@ function mapStudent(r: Row): Student {
   };
 }
 
+export type RosterFilter = {
+  name?: string;
+  /** A level, e.g. "JS1" (any campus or arm). */
+  className?: string;
+  /** One exact class, e.g. Obalende JS2A. */
+  classId?: string;
+  campusId?: string;
+  /** The year they joined, e.g. "2026". */
+  year?: string;
+  status?: "active" | "inactive";
+  /** Only students with results recorded in this session (or one term of it). */
+  sessionId?: string;
+  termId?: string;
+};
+
 /** One page of the roster, A–Z. */
-export async function listStudentsPage(
-  filter: { name?: string; className?: string; year?: string },
-  page: number
-): Promise<Page<Student>> {
+export async function listStudentsPage(filter: RosterFilter, page: number): Promise<Page<Student>> {
+  const supa = serviceClient();
+  // Campus and session are filters on other tables: turn each into the ids
+  // the students query can filter on. Both lookups are tiny and run together.
+  const [campusClassIds, termIds] = await Promise.all([
+    filter.campusId && !filter.classId
+      ? supa.from("classes").select("id").eq("campus_id", filter.campusId).then(({ data }) => (data ?? []).map((c) => c.id as string))
+      : null,
+    filter.termId
+      ? [filter.termId]
+      : filter.sessionId
+        ? supa.from("terms").select("id").eq("session_id", filter.sessionId).then(({ data }) => (data ?? []).map((t) => t.id as string))
+        : null,
+  ]);
+  // Nothing can match (a campus with no classes, a session with no terms).
+  if (campusClassIds?.length === 0 || termIds?.length === 0) return { rows: [], total: 0 };
+
   return readPage(
     (from, to) => {
-      let q = serviceClient().from("students").select("*", { count: "exact" });
+      // "Had results in that period": an inner join on term_scores keeps only
+      // students with at least one mark there, and the embedded rows are cut
+      // to one so a student's 15 subjects don't all come back.
+      const columns: string = termIds ? "*, term_scores!inner(term_id)" : "*";
+      let q = supa.from("students").select(columns, { count: "exact" });
+      if (termIds) q = q.in("term_scores.term_id", termIds).limit(1, { referencedTable: "term_scores" });
       if (filter.name) q = q.ilike("full_name", `%${filter.name}%`);
       if (filter.className) q = q.eq("class_name", filter.className);
+      if (filter.classId) q = q.eq("class_id", filter.classId);
+      if (campusClassIds) q = q.in("class_id", campusClassIds);
       if (filter.year) q = q.eq("entry_year", filter.year);
+      if (filter.status) q = q.eq("active", filter.status === "active");
       return q
         .order("full_name", { ascending: true })
         // admission numbers are unique, so pages never overlap or skip anyone
         .order("admission_number", { ascending: true })
-        .range(from, to);
+        .range(from, to)
+        // The select string is built at runtime, so its row type can't be inferred.
+        .overrideTypes<Row[], { merge: false }>();
     },
     page,
     mapStudent

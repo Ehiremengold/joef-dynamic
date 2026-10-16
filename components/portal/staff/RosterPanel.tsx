@@ -3,7 +3,7 @@
 import { classLabel } from "@/lib/classes";
 import { useEffect, useState } from "react";
 import { EDITABLE, useApi, useInvalidate } from "@/lib/client/api";
-import { CLASSES, type Class, type Student, type Subject } from "@/lib/types";
+import { CLASSES, type AcademicSession, type Campus, type Class, type Student, type Subject, type Term } from "@/lib/types";
 import Pagination from "./Pagination";
 import { usePagedList } from "./usePagedList";
 import { useConfirm } from "./useConfirm";
@@ -15,6 +15,62 @@ const YEARS = ["2024", "2025", "2026", "2027"];
 const HEAD = "px-3 py-3 font-semibold first:pl-4 last:pr-4";
 const CELL = "px-3 py-2.5 first:pl-4 last:pr-4";
 
+type RosterFilters = {
+  campusId: string;
+  /** "level:JS1" (that level on every campus) or "class:<id>" (one class). */
+  classKey: string;
+  status: "" | "active" | "inactive";
+  year: string;
+  sessionId: string;
+  termId: string;
+};
+const NO_FILTERS: RosterFilters = { campusId: "", classKey: "", status: "", year: "", sessionId: "", termId: "" };
+
+/** The roster filters as /api/students query parameters. */
+function toQuery(f: RosterFilters): Record<string, string> {
+  return {
+    campusId: f.campusId,
+    className: f.classKey.startsWith("level:") ? f.classKey.slice(6) : "",
+    classId: f.classKey.startsWith("class:") ? f.classKey.slice(6) : "",
+    status: f.status,
+    year: f.year,
+    sessionId: f.sessionId,
+    termId: f.termId,
+  };
+}
+
+/** Years students can have joined in: each session's first year, newest first. */
+const entryYears = (sessions: AcademicSession[]) =>
+  [...new Set(sessions.map((x) => x.name.slice(0, 4)))].sort().reverse();
+
+function FilterSelect<T extends string>({
+  label,
+  value,
+  onChange,
+  disabled,
+  children,
+}: {
+  label: string;
+  value: T;
+  onChange: (value: T) => void;
+  disabled?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="block text-[13px] font-semibold text-graphite">
+      {label}
+      <select
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value as T)}
+        className="mt-1 w-full cursor-pointer rounded-btn border border-smoke bg-white px-3 py-2.5 text-sm font-normal text-ink outline-none focus:border-brand-navy disabled:cursor-not-allowed disabled:bg-mist disabled:text-pewter"
+      >
+        {children}
+      </select>
+    </label>
+  );
+}
+
 
 export default function RosterPanel({
   onUnauthorized,
@@ -23,17 +79,22 @@ export default function RosterPanel({
 }) {
   const { confirm, dialog } = useConfirm();
   const [name, setName] = useState("");
-  const [classFilter, setClassFilter] = useState("");
+  const [filters, setFilters] = useState(NO_FILTERS);
+  const setFilter = (patch: Partial<RosterFilters>) => setFilters((f) => ({ ...f, ...patch }));
   const [notice, setNotice] = useState<{ text: string; pin?: string } | null>(null);
   const [subjectsFor, setSubjectsFor] = useState<Student | null>(null);
   const { rows: students, total, page, setPage, loading, reload } = usePagedList<Student>({
     url: "/api/students",
     rowsKey: "students",
-    filters: { name: name.trim(), className: classFilter },
+    filters: { name: name.trim(), ...toQuery(filters) },
     onUnauthorized,
   });
 
   const classes = useApi<{ classes: Class[] }>("/api/classes", onUnauthorized).data?.classes ?? [];
+  const campuses = useApi<{ campuses: Campus[] }>("/api/campuses", onUnauthorized).data?.campuses ?? [];
+  const sessions = useApi<{ sessions: AcademicSession[] }>("/api/sessions", onUnauthorized).data?.sessions ?? [];
+  const terms = useApi<{ terms: Term[] }>("/api/terms", onUnauthorized).data?.terms ?? [];
+  const filtered = name.trim() !== "" || JSON.stringify(filters) !== JSON.stringify(NO_FILTERS);
 
   /** Assign to a class (classId set) or clear the assignment (classId ""). */
   async function assignClass(s: Student, classId: string) {
@@ -114,7 +175,7 @@ export default function RosterPanel({
           </div>
         )}
 
-        <div data-tour="students-search" className="mt-4 grid gap-3 sm:grid-cols-2">
+        <div data-tour="students-search" className="mt-4 space-y-3">
           <input
             type="text"
             value={name}
@@ -122,16 +183,85 @@ export default function RosterPanel({
             placeholder="Search by name"
             className="w-full rounded-btn border border-smoke px-3 py-2.5 text-sm outline-none focus:border-brand-navy"
           />
-          <select
-            value={classFilter}
-            onChange={(e) => setClassFilter(e.target.value)}
-            className="w-full cursor-pointer rounded-btn border border-smoke bg-white px-3 py-2.5 text-sm outline-none focus:border-brand-navy"
-          >
-            <option value="">All classes</option>
-            {CLASSES.map((c) => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-          </select>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <FilterSelect
+              label="Campus"
+              value={filters.campusId}
+              // A class from another campus no longer applies.
+              onChange={(campusId) => setFilter({ campusId, classKey: filters.classKey.startsWith("class:") ? "" : filters.classKey })}
+            >
+              <option value="">All campuses</option>
+              {campuses.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </FilterSelect>
+            <FilterSelect label="Class" value={filters.classKey} onChange={(classKey) => setFilter({ classKey })}>
+              <option value="">All classes</option>
+              {filters.campusId
+                ? classes
+                    .filter((c) => c.campusId === filters.campusId)
+                    .map((c) => (
+                      <option key={c.id} value={`class:${c.id}`}>{classLabel(c)}</option>
+                    ))
+                : CLASSES.map((c) => (
+                    <option key={c} value={`level:${c}`}>{c}, every campus</option>
+                  ))}
+            </FilterSelect>
+            <FilterSelect label="Status" value={filters.status} onChange={(status) => setFilter({ status })}>
+              <option value="">Active and inactive</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive (left)</option>
+            </FilterSelect>
+            <FilterSelect label="Entry year" value={filters.year} onChange={(year) => setFilter({ year })}>
+              <option value="">Any year</option>
+              {entryYears(sessions).map((y) => (
+                <option key={y} value={y}>Joined in {y}</option>
+              ))}
+            </FilterSelect>
+            <FilterSelect
+              label="Had results in"
+              value={filters.sessionId}
+              onChange={(sessionId) => setFilter({ sessionId, termId: "" })}
+            >
+              <option value="">Any session</option>
+              {[...sessions]
+                .sort((a, b) => b.name.localeCompare(a.name))
+                .map((x) => (
+                  <option key={x.id} value={x.id}>{x.name}</option>
+                ))}
+            </FilterSelect>
+            <FilterSelect
+              label="Term"
+              value={filters.termId}
+              disabled={!filters.sessionId}
+              onChange={(termId) => setFilter({ termId })}
+            >
+              <option value="">{filters.sessionId ? "Any term of the session" : "Choose a session first"}</option>
+              {terms
+                .filter((t) => t.sessionId === filters.sessionId)
+                .map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+            </FilterSelect>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-3 text-[13px] text-pewter">
+            <span aria-live="polite">
+              {loading ? "Searching…" : `${total} student${total === 1 ? "" : "s"}`}
+              {filters.sessionId ? " with results recorded in that period" : ""}
+            </span>
+            {filtered && (
+              <button
+                type="button"
+                onClick={() => {
+                  setName("");
+                  setFilters(NO_FILTERS);
+                }}
+                className="cursor-pointer font-semibold text-brand-navy hover:underline"
+              >
+                Clear filters
+              </button>
+            )}
+          </div>
         </div>
 
         <div data-tour="students-table" className="mt-4 overflow-x-auto rounded-card border border-smoke bg-white">
@@ -139,7 +269,7 @@ export default function RosterPanel({
             <p className="p-6 text-sm text-graphite">Loading…</p>
           ) : students.length === 0 ? (
             <p className="p-6 text-sm text-graphite">
-              {name.trim() || classFilter ? "No students match that search." : "No students yet."}
+              {filtered ? "No students match these filters." : "No students yet."}
             </p>
           ) : (
             <table className={`w-full min-w-[640px] text-left text-sm transition-opacity duration-150 ${loading ? "opacity-60" : ""}`}>

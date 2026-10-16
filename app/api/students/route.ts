@@ -12,16 +12,27 @@ import {
 import { getClassById } from "@/lib/data/classes";
 import { CLASSES } from "@/lib/types";
 
-/** GET /api/students — staff list/search the roster, a page at a time (?page=). */
+/**
+ * GET /api/students — staff list/search the roster, a page at a time (?page=).
+ * Filters: name, className (level), classId, campusId, year (entry year),
+ * status (active|inactive), sessionId / termId (had results then).
+ */
 export async function GET(req: NextRequest) {
   try {
     await requireStaff();
     const { searchParams } = new URL(req.url);
+    const param = (key: string) => searchParams.get(key)?.trim() || undefined;
+    const status = param("status");
     const { rows, total } = await listStudentsPage(
       {
-        name: searchParams.get("name")?.trim() || undefined,
-        className: searchParams.get("className") || undefined,
-        year: searchParams.get("year")?.trim() || undefined,
+        name: param("name"),
+        className: param("className"),
+        classId: param("classId"),
+        campusId: param("campusId"),
+        year: param("year"),
+        status: status === "active" || status === "inactive" ? status : undefined,
+        sessionId: param("sessionId"),
+        termId: param("termId"),
       },
       pageParam(searchParams)
     );
