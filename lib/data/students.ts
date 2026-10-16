@@ -34,17 +34,29 @@ export type RosterFilter = {
   /** The year they joined, e.g. "2026". */
   year?: string;
   status?: "active" | "inactive";
-  /** Only students with results recorded in this session (or one term of it). */
+  /**
+   * Only students in school during this session (or one term of it). For the
+   * current session or term that is every active student; for a past one it
+   * is everyone with results recorded then (every student who attended got
+   * marks, and there's no other record of who was enrolled in a past term).
+   */
   sessionId?: string;
   termId?: string;
 };
 
+/** Which students a session/term filter selects; see RosterFilter.sessionId. */
+export type PeriodMatch = "at-school-now" | "had-results";
+
 /** One page of the roster, A–Z. */
-export async function listStudentsPage(filter: RosterFilter, page: number): Promise<Page<Student>> {
+export async function listStudentsPage(
+  filter: RosterFilter,
+  page: number
+): Promise<Page<Student> & { periodMatch: PeriodMatch | null }> {
   const supa = serviceClient();
+  const byPeriod = Boolean(filter.termId || filter.sessionId);
   // Campus and session are filters on other tables: turn each into the ids
-  // the students query can filter on. Both lookups are tiny and run together.
-  const [campusClassIds, termIds] = await Promise.all([
+  // the students query can filter on. These lookups are tiny and run together.
+  const [campusClassIds, periodTermIds, currentTerm] = await Promise.all([
     filter.campusId && !filter.classId
       ? supa.from("classes").select("id").eq("campus_id", filter.campusId).then(({ data }) => (data ?? []).map((c) => c.id as string))
       : null,
@@ -53,9 +65,19 @@ export async function listStudentsPage(filter: RosterFilter, page: number): Prom
       : filter.sessionId
         ? supa.from("terms").select("id").eq("session_id", filter.sessionId).then(({ data }) => (data ?? []).map((t) => t.id as string))
         : null,
+    byPeriod
+      ? supa.from("terms").select("id, session_id").eq("is_current", true).maybeSingle().then(({ data }) => data)
+      : null,
   ]);
+  const isNow =
+    byPeriod &&
+    currentTerm !== null &&
+    (filter.termId ? filter.termId === currentTerm.id : filter.sessionId === currentTerm.session_id);
+  const periodMatch: PeriodMatch | null = !byPeriod ? null : isNow ? "at-school-now" : "had-results";
+  // Results only matter for a past period; "now" is simply the active students.
+  const termIds = periodMatch === "had-results" ? periodTermIds : null;
   // Nothing can match (a campus with no classes, a session with no terms).
-  if (campusClassIds?.length === 0 || termIds?.length === 0) return { rows: [], total: 0 };
+  if (campusClassIds?.length === 0 || termIds?.length === 0) return { rows: [], total: 0, periodMatch };
 
   return readPage(
     (from, to) => {
@@ -71,6 +93,7 @@ export async function listStudentsPage(filter: RosterFilter, page: number): Prom
       if (campusClassIds) q = q.in("class_id", campusClassIds);
       if (filter.year) q = q.eq("entry_year", filter.year);
       if (filter.status) q = q.eq("active", filter.status === "active");
+      if (periodMatch === "at-school-now") q = q.eq("active", true);
       return q
         .order("full_name", { ascending: true })
         // admission numbers are unique, so pages never overlap or skip anyone
@@ -81,7 +104,7 @@ export async function listStudentsPage(filter: RosterFilter, page: number): Prom
     },
     page,
     mapStudent
-  );
+  ).then((result) => ({ ...result, periodMatch }));
 }
 
 /** Create a student; returns the record plus the plaintext PIN (shown once). */

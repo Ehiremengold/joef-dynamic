@@ -15,7 +15,8 @@ import { CLASSES } from "@/lib/types";
 /**
  * GET /api/students — staff list/search the roster, a page at a time (?page=).
  * Filters: name, className (level), classId, campusId, year (entry year),
- * status (active|inactive), sessionId / termId (had results then).
+ * status (active|inactive), sessionId / termId (in school then: every active
+ * student for the current period, students with results for a past one).
  */
 export async function GET(req: NextRequest) {
   try {
@@ -23,7 +24,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const param = (key: string) => searchParams.get(key)?.trim() || undefined;
     const status = param("status");
-    const { rows, total } = await listStudentsPage(
+    const { rows, total, periodMatch } = await listStudentsPage(
       {
         name: param("name"),
         className: param("className"),
@@ -36,7 +37,7 @@ export async function GET(req: NextRequest) {
       },
       pageParam(searchParams)
     );
-    return NextResponse.json({ students: rows, total });
+    return NextResponse.json({ students: rows, total, periodMatch });
   } catch (e) {
     return errorResponse(e);
   }

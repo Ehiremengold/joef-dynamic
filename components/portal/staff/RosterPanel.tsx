@@ -83,7 +83,7 @@ export default function RosterPanel({
   const setFilter = (patch: Partial<RosterFilters>) => setFilters((f) => ({ ...f, ...patch }));
   const [notice, setNotice] = useState<{ text: string; pin?: string } | null>(null);
   const [subjectsFor, setSubjectsFor] = useState<Student | null>(null);
-  const { rows: students, total, page, setPage, loading, reload } = usePagedList<Student>({
+  const { rows: students, total, page, setPage, loading, reload, response } = usePagedList<Student>({
     url: "/api/students",
     rowsKey: "students",
     filters: { name: name.trim(), ...toQuery(filters) },
@@ -219,7 +219,7 @@ export default function RosterPanel({
               ))}
             </FilterSelect>
             <FilterSelect
-              label="Had results in"
+              label="In school during"
               value={filters.sessionId}
               onChange={(sessionId) => setFilter({ sessionId, termId: "" })}
             >
@@ -227,7 +227,10 @@ export default function RosterPanel({
               {[...sessions]
                 .sort((a, b) => b.name.localeCompare(a.name))
                 .map((x) => (
-                  <option key={x.id} value={x.id}>{x.name}</option>
+                  <option key={x.id} value={x.id}>
+                    {x.name}
+                    {x.isCurrent ? " (current)" : ""}
+                  </option>
                 ))}
             </FilterSelect>
             <FilterSelect
@@ -240,14 +243,21 @@ export default function RosterPanel({
               {terms
                 .filter((t) => t.sessionId === filters.sessionId)
                 .map((t) => (
-                  <option key={t.id} value={t.id}>{t.name}</option>
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                    {t.isCurrent ? " (current)" : ""}
+                  </option>
                 ))}
             </FilterSelect>
           </div>
           <div className="flex flex-wrap items-center justify-between gap-3 text-[13px] text-pewter">
             <span aria-live="polite">
               {loading ? "Searching…" : `${total} student${total === 1 ? "" : "s"}`}
-              {filters.sessionId ? " with results recorded in that period" : ""}
+              {response?.periodMatch === "at-school-now"
+                ? " at school now (every active student)"
+                : response?.periodMatch === "had-results"
+                  ? " with results recorded then"
+                  : ""}
             </span>
             {filtered && (
               <button

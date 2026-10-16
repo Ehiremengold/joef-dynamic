@@ -68,6 +68,8 @@ export function usePagedList<T>({
 
   return {
     rows: ((data?.[rowsKey] as T[] | undefined) ?? []) as T[],
+    /** The whole answer, for anything a list sends besides its rows. */
+    response: data,
     total: data?.total ?? 0,
     page,
     setPage,
