@@ -97,6 +97,16 @@ export default function PromotionPanel({
     repeated: moves.filter(({ row }) => row.choice === "repeated").length,
     graduated: moves.filter(({ row }) => row.choice === "graduated").length,
   };
+  // Says exactly what pressing it will do: "Promote 4 students, keep 1 back".
+  const nStudents = (n: number) => `${n} student${n === 1 ? "" : "s"}`;
+  const actions = [
+    counts.promoted && `promote ${nStudents(counts.promoted)}`,
+    counts.graduated && `graduate ${nStudents(counts.graduated)}`,
+    counts.repeated && `keep ${counts.repeated} back`,
+  ].filter(Boolean) as string[];
+  const buttonLabel = actions.length
+    ? actions.join(", ").replace(/^./, (c) => c.toUpperCase())
+    : "Promote 0 students";
 
   async function submit() {
     if (!cls || !session) return;
@@ -107,14 +117,14 @@ export default function PromotionPanel({
       counts.graduated && `${counts.graduated} graduating (marked as left)`,
     ].filter(Boolean);
     const ok = await confirm({
-      title: `Move ${moves.length} student${moves.length === 1 ? "" : "s"} into ${session.name}?`,
+      title: `${buttonLabel} for ${session.name}?`,
       message: (
         <>
           <p>{parts.join(", ")}.</p>
           <p className="mt-2">You can undo any of these afterwards from the list below.</p>
         </>
       ),
-      confirmLabel: "Promote",
+      confirmLabel: "Confirm",
     });
     if (!ok) return;
 
@@ -333,7 +343,7 @@ export default function PromotionPanel({
                 disabled={saving || promotionQ.isFetching || moves.length === 0 || missingClass}
                 className="cursor-pointer rounded-btn bg-brand-red px-6 py-2.5 text-sm font-semibold text-white hover:bg-brand-red-dark disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {saving ? "Promoting…" : `Promote ${moves.length} student${moves.length === 1 ? "" : "s"}`}
+                {saving ? "Saving…" : buttonLabel}
               </button>
               {missingClass && (
                 <span className="text-sm text-graphite">Choose where the promoted students go first.</span>
