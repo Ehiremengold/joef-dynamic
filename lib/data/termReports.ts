@@ -48,22 +48,30 @@ export async function classForTerm(
   return (data?.class_id as string | undefined) ?? currentClassId;
 }
 
+/** The students who were in a class for a term, each with what has been written for them. */
 /**
- * The students who were in a class for a term, each with what has been
- * written for them. That is everyone with scores in the class for the term
- * (whether active today or not), plus active students in the class today who
- * have no scores anywhere for the term yet.
+ * The students who were in a class for a term: everyone with scores in the
+ * class for the term (whether active today or not), plus active students in
+ * the class today who have no scores anywhere for the term yet. Shared by
+ * report cards and term-score entry so both list the same children.
  */
-export async function listClassTermReports(classId: string, termId: string): Promise<TermReportRow[]> {
+export async function classTermStudentIds(classId: string, termId: string): Promise<string[]> {
   const supa = serviceClient();
-  const scored = new Set((await allScoreRows({ termId, classId })).map((r) => r.student_id as string));
-
-  const { data: current } = await supa.from("students").select("id").eq("class_id", classId).eq("active", true);
-  const currentIds = (current ?? []).map((s) => s.id as string);
+  const [scoredRows, { data: current }] = await Promise.all([
+    allScoreRows({ termId, classId }),
+    supa.from("students").select("id").eq("class_id", classId).eq("active", true),
+  ]);
+  const scored = new Set(scoredRows.map((r) => r.student_id as string));
+  const currentIds = (current ?? []).map((s) => s.id as string).filter((id) => !scored.has(id));
   const scoredElsewhere = new Set(
     currentIds.length ? (await allScoreRows({ termId, studentIds: currentIds })).map((r) => r.student_id as string) : []
   );
-  const ids = [...scored, ...currentIds.filter((id) => !scored.has(id) && !scoredElsewhere.has(id))];
+  return [...scored, ...currentIds.filter((id) => !scoredElsewhere.has(id))];
+}
+
+export async function listClassTermReports(classId: string, termId: string): Promise<TermReportRow[]> {
+  const supa = serviceClient();
+  const ids = await classTermStudentIds(classId, termId);
   if (ids.length === 0) return [];
 
   const [{ data: students }, { data: reports }] = await Promise.all([

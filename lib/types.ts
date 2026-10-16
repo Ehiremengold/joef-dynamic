@@ -224,6 +224,30 @@ export type Promotion = {
   createdAt: string;
 };
 
+/** Every term score is out of these (CA 40 + exam 60), as in the school's records. */
+export const CA_MAX = 40;
+export const EXAM_MAX = 60;
+
+/** A subject on a class's score sheet, with how many students have marks. */
+export type SubjectProgress = {
+  subjectId: string;
+  name: string;
+  entered: number;
+  /** Students in the class who take it (those exempt don't count). */
+  taking: number;
+};
+
+/** One student's row on a subject score sheet. Null marks are not entered yet. */
+export type ScoreRow = {
+  studentId: string;
+  fullName: string;
+  admissionNumber: string;
+  ca: number | null;
+  exam: number | null;
+  /** They don't take this subject (Students tab → Subjects). */
+  exempt: boolean;
+};
+
 /** One student's results for one term, as printed on their report sheet. */
 export type ReportSheet = {
   sessionName: string;

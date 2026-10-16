@@ -16,6 +16,7 @@ import AttendancePanel from "@/components/portal/staff/AttendancePanel";
 import ReportCardsPanel from "@/components/portal/staff/ReportCardsPanel";
 import PromotionPanel from "@/components/portal/staff/PromotionPanel";
 import SessionsPanel from "@/components/portal/staff/SessionsPanel";
+import TermScoresPanel from "@/components/portal/staff/TermScoresPanel";
 import GuideTour from "@/components/portal/GuideTour";
 import { STAFF_SIGNIN_TOUR, staffDashboardTour, staffTabTour, type StaffTab } from "@/lib/tours";
 import { isAdmin, ROLE_LABELS } from "@/lib/roles";
@@ -86,6 +87,7 @@ const TABS: [Tab, string][] = [
   ["students", "Students"],
   ["classes", "Classes"],
   ["sessions", "Sessions & terms"],
+  ["scores", "Term scores"],
   ["attendance", "Attendance"],
   ["reports", "Report cards"],
   ["promotion", "Promotion"],
@@ -211,6 +213,8 @@ function TabPanel({ tab, me, onUnauthorized }: { tab: Tab; me: SignedInStaff; on
       return <ClassesPanel onUnauthorized={onUnauthorized} />;
     case "sessions":
       return <SessionsPanel onUnauthorized={onUnauthorized} />;
+    case "scores":
+      return <TermScoresPanel me={me} onUnauthorized={onUnauthorized} />;
     case "attendance":
       return <AttendancePanel me={me} onUnauthorized={onUnauthorized} />;
     case "reports":

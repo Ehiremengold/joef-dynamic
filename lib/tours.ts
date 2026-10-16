@@ -174,6 +174,11 @@ export function staffDashboardTour(role: StaffRole): TourStep[] {
       text: "The school calendar: sessions, their terms, which term is current, and the “next term begins” date on report sheets.",
     },
     {
+      target: "tab-scores",
+      title: "Term scores",
+      text: "Each subject's CA and exam marks for the term. They print on report sheets and transcripts.",
+    },
+    {
       target: "tab-attendance",
       title: "Attendance",
       text: "Each term's total school days and how many days each student was present. These print on the report card.",
@@ -415,6 +420,42 @@ const SESSIONS_TOUR: TourStep[] = [
   },
 ];
 
+function scoresTour(role: StaffRole): TourStep[] {
+  return [
+    {
+      title: "Term scores",
+      text: isAdmin(role)
+        ? "Enter or correct any class's CA and exam marks for a term. They print on report sheets and transcripts, and make up the class average. You can change any term, including past ones."
+        : "Enter your class's CA and exam marks for each subject this term. They print on report sheets and transcripts, and make up the class average. Past terms are read only: ask an admin to correct one.",
+    },
+    {
+      target: "scores-term",
+      title: "Term",
+      text: "Opens on the current term.",
+    },
+    {
+      target: "scores-class",
+      title: "Class",
+      text: isAdmin(role) ? "Any class." : "The classes you are class teacher of.",
+    },
+    {
+      target: "scores-subjects",
+      title: "Subjects",
+      text: "Each subject the class takes, with how many students have marks (e.g. 25/30). Pick one to open its sheet. The number turns green when everyone is done.",
+    },
+    {
+      target: "scores-table",
+      title: "Type the marks",
+      text: "CA and exam for each student. The total and grade fill in as you type. Press Enter to go down the column. Already have them in Excel? Click the first student's CA box and paste the column; paste two columns (CA, then exam) to fill both. A mark outside the range turns red. Leave both boxes empty to remove a student's mark.",
+    },
+    {
+      target: "scores-save",
+      title: "Save",
+      text: "Saves this subject's marks. If you switch subject, class or term with marks not saved, you'll be asked first.",
+    },
+  ];
+}
+
 function attendanceTour(role: StaffRole): TourStep[] {
   return [
     {
@@ -577,6 +618,7 @@ export type StaffTab =
   | "students"
   | "classes"
   | "sessions"
+  | "scores"
   | "attendance"
   | "reports"
   | "promotion"
@@ -595,6 +637,8 @@ export function staffTabTour(tab: StaffTab, role: StaffRole): TourStep[] {
       return CLASSES_TOUR;
     case "sessions":
       return SESSIONS_TOUR;
+    case "scores":
+      return scoresTour(role);
     case "attendance":
       return attendanceTour(role);
     case "reports":
