@@ -45,7 +45,7 @@ export default function ResultsPanel({
   return (
     <div>
       {dialog}
-      <div className="rounded-card border border-smoke bg-white p-5">
+      <div data-tour="results-filters" className="rounded-card border border-smoke bg-white p-5">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <label className="block text-sm font-semibold" htmlFor="f-name">Search name</label>
@@ -102,7 +102,7 @@ export default function ResultsPanel({
         </div>
       </div>
 
-      <div className="mt-6 overflow-x-auto rounded-card border border-smoke bg-white">
+      <div data-tour="results-table" className="mt-6 overflow-x-auto rounded-card border border-smoke bg-white">
         {loading && attempts.length === 0 ? (
           <p className="p-6 text-sm text-graphite">Loading results…</p>
         ) : attempts.length === 0 ? (
@@ -129,7 +129,7 @@ export default function ResultsPanel({
                   <td className="px-4 py-3">
                     {a.examType === "entrance" ? "Entrance" : "Class test"}
                   </td>
-                  <td className="px-4 py-3">{a.className || "—"}</td>
+                  <td className="px-4 py-3">{a.className || <span className="text-pewter">None</span>}</td>
                   <td className="px-4 py-3">{a.year}</td>
                   <td className="px-4 py-3">
                     <span className="font-display font-bold">{a.score}/{a.total}</span>{" "}
@@ -143,6 +143,7 @@ export default function ResultsPanel({
                   <td className="px-4 py-3">
                     <div className="flex gap-3 whitespace-nowrap">
                       <a
+                        data-tour="results-slip"
                         href={`/api/attempts/${a.id}/pdf`}
                         target="_blank"
                         rel="noopener noreferrer"
@@ -152,6 +153,7 @@ export default function ResultsPanel({
                       </a>
                       {a.takerType === "student" && a.studentId && (
                         <a
+                          data-tour="results-transcript"
                           href={`/api/students/${a.studentId}/transcript`}
                           target="_blank"
                           rel="noopener noreferrer"

@@ -41,13 +41,13 @@ function finish(d: Draft, number: number): ParsedQuestion {
   const options = d.options.map((o) => o.text);
 
   if (!text) problems.push("no question text");
-  if (options.length < 2) problems.push(`only ${options.length} option${options.length === 1 ? "" : "s"} — needs at least 2`);
-  if (options.length > MAX_OPTIONS) problems.push(`${options.length} options — at most ${MAX_OPTIONS}`);
+  if (options.length < 2) problems.push(`only ${options.length} option${options.length === 1 ? "" : "s"}, needs at least 2`);
+  if (options.length > MAX_OPTIONS) problems.push(`${options.length} options, at most ${MAX_OPTIONS}`);
   if (letters.some((l, i) => l !== String.fromCharCode(65 + i))) {
-    problems.push(`options are lettered ${letters.join(", ")} — expected ${letters.map((_, i) => String.fromCharCode(65 + i)).join(", ")}`);
+    problems.push(`options are lettered ${letters.join(", ")}, expected ${letters.map((_, i) => String.fromCharCode(65 + i)).join(", ")}`);
   }
   if (options.some((o) => !o)) problems.push("an option is empty");
-  if (d.stray.length) problems.push(`"${d.stray[0]}" sits among the options but isn't one — put it in the question, or on an "Explanation:" line`);
+  if (d.stray.length) problems.push(`"${d.stray[0]}" sits among the options but isn't one. Put it in the question, or on an "Explanation:" line`);
 
   let correctIndex = -1;
   if (!d.answer) problems.push('no "Answer:" line');

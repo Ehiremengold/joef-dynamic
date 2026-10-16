@@ -21,6 +21,7 @@ function mapTerm(r: Row): Term {
     sessionName: session?.name as string | undefined,
     name: r.name as Term["name"],
     isCurrent: r.is_current as boolean,
+    nextTermBegins: (r.next_term_begins as string | null) ?? null,
     createdAt: r.created_at as string,
   };
 }
@@ -87,12 +88,24 @@ export async function createTerm(input: {
   return mapTerm(data);
 }
 
-/** Make `id` the current term, unsetting any prior current term first. */
+/**
+ * Make `id` the current term, unsetting any prior current term first. Its
+ * session becomes the current session too, so the two never disagree.
+ */
 export async function setCurrentTerm(id: string): Promise<void> {
   const supa = serviceClient();
+  const term = await getTermById(id);
+  if (!term) throw new Error("Term not found");
   const { error: unsetErr } = await supa.from("terms").update({ is_current: false }).eq("is_current", true);
   if (unsetErr) throw new Error(unsetErr.message);
   const { error } = await supa.from("terms").update({ is_current: true }).eq("id", id);
+  if (error) throw new Error(error.message);
+  await setCurrentSession(term.sessionId);
+}
+
+/** The date printed as "Next term begins" on the term's report sheets; null clears it. */
+export async function setNextTermBegins(id: string, date: string | null): Promise<void> {
+  const { error } = await serviceClient().from("terms").update({ next_term_begins: date }).eq("id", id);
   if (error) throw new Error(error.message);
 }
 

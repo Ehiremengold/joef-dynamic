@@ -1,16 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { keepPreviousData } from "@tanstack/react-query";
 import { pageCount } from "@/lib/paging";
+import { useApi, useInvalidate } from "@/lib/client/api";
 
 /**
  * A staff list the server pages for us: `GET url?<filters>&page=N` answering
- * `{ [rowsKey]: T[], total }`.
+ * `{ [rowsKey]: T[], total }`, read through the shared cache.
  *
  * Changing a filter goes back to page 1, after a short pause so typing in a
  * search box doesn't send a request per keystroke; turning a page is
- * immediate. Only the newest request's answer is ever shown, and the rows on
- * screen stay up while the next ones load. Call `reload` after changing a row.
+ * immediate. The rows on screen stay up while the next ones load, and a page
+ * seen before shows at once. Call `reload` after changing a row.
  */
 export function usePagedList<T>({
   url,
@@ -29,10 +31,6 @@ export function usePagedList<T>({
   ).toString();
 
   const [page, setPage] = useState(1);
-  const [rows, setRows] = useState<T[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [reloads, setReloads] = useState(0);
 
   // New filters: back to the first page. Done while rendering, so the old
   // page number is never requested against the new filters.
@@ -42,41 +40,40 @@ export function usePagedList<T>({
     setPage(1);
   }
 
-  const unauthorized = useRef(onUnauthorized);
+  // What is actually fetched lags typing by 300ms.
+  const [fetchedQuery, setFetchedQuery] = useState(query);
   useEffect(() => {
-    unauthorized.current = onUnauthorized;
-  });
+    if (query === fetchedQuery) return;
+    const t = setTimeout(() => setFetchedQuery(query), 300);
+    return () => clearTimeout(t);
+  }, [query, fetchedQuery]);
 
-  const fetchedQuery = useRef(query);
+  const { data, isPending, isPlaceholderData } = useApi<Record<string, unknown> & { total: number }>(
+    `${url}?${fetchedQuery && `${fetchedQuery}&`}page=${page}`,
+    onUnauthorized,
+    { placeholderData: keepPreviousData }
+  );
+
+  // This page no longer exists (the list got shorter): step back to the last
+  // one that does, keeping the current rows up until it arrives.
+  const lastPage = data ? pageCount(data.total) : page;
   useEffect(() => {
-    const typing = fetchedQuery.current !== query;
-    fetchedQuery.current = query;
+    if (page > lastPage) setPage(lastPage);
+  }, [page, lastPage]);
 
-    let superseded = false;
-    setLoading(true);
-    const timer = setTimeout(async () => {
-      const res = await fetch(`${url}?${query && `${query}&`}page=${page}`);
-      const body = res.ok ? await res.json() : null;
-      if (superseded) return;
-      if (res.status === 401) unauthorized.current();
-      if (body) {
-        // This page no longer exists (the list got shorter): step back to the
-        // last one that does, and keep the current rows up until it arrives.
-        const lastPage = pageCount(body.total);
-        if (page > lastPage) return setPage(lastPage);
-        setRows(body[rowsKey]);
-        setTotal(body.total);
-      }
-      setLoading(false);
-    }, typing ? 300 : 0);
+  const invalidate = useInvalidate();
+  const reload = useCallback(() => {
+    invalidate(url);
+  }, [invalidate, url]);
 
-    return () => {
-      superseded = true;
-      clearTimeout(timer);
-    };
-  }, [url, rowsKey, query, page, reloads]);
-
-  const reload = useCallback(() => setReloads((n) => n + 1), []);
-
-  return { rows, total, page, setPage, loading, reload };
+  return {
+    rows: ((data?.[rowsKey] as T[] | undefined) ?? []) as T[],
+    total: data?.total ?? 0,
+    page,
+    setPage,
+    // True only while the rows shown are not yet the ones asked for — a quiet
+    // background refresh of the same page doesn't count.
+    loading: isPending || isPlaceholderData || query !== fetchedQuery,
+    reload,
+  };
 }

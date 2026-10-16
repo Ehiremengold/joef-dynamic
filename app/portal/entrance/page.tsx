@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import TestRunner, { type SubmittedResult } from "@/components/portal/TestRunner";
+import GuideTour from "@/components/portal/GuideTour";
+import { ENTRANCE_TOUR } from "@/lib/tours";
 import type { PublicExam } from "@/lib/types";
 
 export default function EntrancePage() {
@@ -73,12 +75,18 @@ export default function EntrancePage() {
       <main className="min-h-[70vh] bg-mist">
         <section className="bg-brand-navy text-white">
           <div className="mx-auto max-w-[1200px] px-4 py-10">
-            <Link href="/portal" className="text-sm text-white/70 transition-colors duration-200 hover:text-brand-gold">
-              ← Portal home
-            </Link>
-            <h1 className="mt-3 font-display text-3xl font-bold tracking-tight md:text-4xl">
-              Common Entrance Test
-            </h1>
+            <div className="flex flex-wrap items-end justify-between gap-4">
+              <div>
+                <Link href="/portal" className="text-sm text-white/70 transition-colors duration-200 hover:text-brand-gold">
+                  ← Portal home
+                </Link>
+                <h1 className="mt-3 font-display text-3xl font-bold tracking-tight md:text-4xl">
+                  Common Entrance Test
+                </h1>
+              </div>
+              {/* Only before the test starts: a tour mid-test would eat into the timer. */}
+              {step === "register" && <GuideTour id="entrance-v1" steps={ENTRANCE_TOUR} />}
+            </div>
           </div>
         </section>
 
@@ -94,6 +102,7 @@ export default function EntrancePage() {
               <label className="mt-6 block text-sm font-semibold" htmlFor="c-name">Candidate full name</label>
               <input
                 id="c-name"
+                data-tour="entrance-name"
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -104,6 +113,7 @@ export default function EntrancePage() {
               <label className="mt-4 block text-sm font-semibold" htmlFor="c-phone">Parent / guardian phone</label>
               <input
                 id="c-phone"
+                data-tour="entrance-phone"
                 type="tel"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
@@ -114,6 +124,7 @@ export default function EntrancePage() {
               <label className="mt-4 block text-sm font-semibold" htmlFor="c-code">Access code</label>
               <input
                 id="c-code"
+                data-tour="entrance-code"
                 type="text"
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
@@ -125,6 +136,7 @@ export default function EntrancePage() {
 
               <button
                 type="submit"
+                data-tour="entrance-submit"
                 disabled={loading}
                 className="mt-6 w-full cursor-pointer rounded-btn bg-brand-red px-6 py-3.5 font-semibold text-white transition-colors duration-200 hover:bg-brand-red-dark disabled:opacity-50"
               >

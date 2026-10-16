@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
+import GuideTour from "@/components/portal/GuideTour";
+import { PORTAL_HOME_TOUR } from "@/lib/tours";
 
 export const metadata: Metadata = {
   title: "Portal | Joef Dynamic College",
@@ -12,6 +14,7 @@ export const metadata: Metadata = {
 const areas = [
   {
     href: "/portal/entrance",
+    tour: "area-entrance",
     title: "Common Entrance",
     text: "Prospective students: enter your name and take the entrance test online.",
     cta: "Take the test",
@@ -21,6 +24,7 @@ const areas = [
   },
   {
     href: "/portal/cbt",
+    tour: "area-cbt",
     title: "Student CBT & Results",
     text: "JS1–SS3 students: take your class tests and check your results any time.",
     cta: "Open student area",
@@ -30,6 +34,7 @@ const areas = [
   },
   {
     href: "/portal/staff",
+    tour: "area-staff",
     title: "Staff Section",
     text: "Set questions for entrance and class tests, and review every result.",
     cta: "Staff sign in",
@@ -56,6 +61,9 @@ export default function PortalHome() {
               Choose where you need to go, entrance candidates, current
               students, and staff each have their own area.
             </p>
+            <div className="mt-6">
+              <GuideTour id="portal-home-v1" steps={PORTAL_HOME_TOUR} label="Show me around" />
+            </div>
           </div>
         </section>
 
@@ -65,6 +73,7 @@ export default function PortalHome() {
               <Link
                 key={a.href}
                 href={a.href}
+                data-tour={a.tour}
                 className="group flex cursor-pointer flex-col rounded-card border border-smoke bg-white p-6 transition-transform duration-200 hover:-translate-y-0.5"
               >
                 <svg

@@ -11,7 +11,7 @@ export const REPORT_MARGIN = 36;
 const BOX: Box = { left: REPORT_MARGIN, width: 595.28 - 2 * REPORT_MARGIN };
 const PAD = 5;
 
-const BLANK = "—";
+const BLANK = "-";
 /** A mark or total, without trailing zeros: 60, 46.5. */
 const mark = (n: number): string => String(Math.round(n * 100) / 100);
 const shortDate = (iso: string): string => iso.split("-").reverse().join("/");

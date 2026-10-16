@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
     const taker = await getTakerSession();
     if (!taker) {
       return NextResponse.json(
-        { error: "Your session has expired — please sign in again" },
+        { error: "Your session has expired. Please sign in again" },
         { status: 401 }
       );
     }

@@ -10,7 +10,9 @@
   "dependencies": {
     "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.109.0",
+    "@tanstack/react-query": "^5.104.0",
     "bcryptjs": "^3.0.3",
+    "driver.js": "^1.6.0",
     "jose": "^6.2.3",
     "motion": "^12.42.2",
     "next": "^15.3.4",

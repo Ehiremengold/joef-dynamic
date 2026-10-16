@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
     const exam = await getExam(String(body?.examId || ""));
     if (!exam) return NextResponse.json({ error: "Exam not found" }, { status: 404 });
     if (examAccess(staff, exam) === "manage") {
-      return NextResponse.json({ error: "This is yours — you can delete it directly" }, { status: 400 });
+      return NextResponse.json({ error: "This is yours, so you can delete it directly" }, { status: 400 });
     }
 
     let question: { text: string; options: string[] } | null = null;

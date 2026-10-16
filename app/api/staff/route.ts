@@ -113,7 +113,7 @@ export async function PATCH(req: NextRequest) {
     }
     if (id === admin.id && patch.role !== undefined && patch.role !== admin.role) {
       return NextResponse.json(
-        { error: "You can't change your own role — ask another admin to do it" },
+        { error: "You can't change your own role. Ask another admin to do it" },
         { status: 400 }
       );
     }
@@ -126,7 +126,7 @@ export async function PATCH(req: NextRequest) {
       (patch.role === "teacher" || patch.active === false);
     if (losesAdmin && (await countActiveAdmins()) <= 1) {
       return NextResponse.json(
-        { error: "This is the only active administrator — promote someone else first" },
+        { error: "This is the only active administrator. Promote someone else first" },
         { status: 400 }
       );
     }

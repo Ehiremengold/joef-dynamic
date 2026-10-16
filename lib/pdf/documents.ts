@@ -121,7 +121,7 @@ export async function buildResultSlipPdf(input: ResultSlipInput): Promise<Buffer
             `${input.attendance.daysPresent}/${input.attendance.totalDays} days (${pct(
               input.attendance.daysPresent,
               input.attendance.totalDays
-            )}%) — ${input.attendance.termLabel}`,
+            )}%), ${input.attendance.termLabel}`,
           ],
         ] as [string, string][])
       : []),

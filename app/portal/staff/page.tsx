@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import { PAGE_WIDTH } from "@/components/pageWidth";
@@ -13,52 +14,86 @@ import TeamPanel from "@/components/portal/staff/TeamPanel";
 import ClassesPanel from "@/components/portal/staff/ClassesPanel";
 import AttendancePanel from "@/components/portal/staff/AttendancePanel";
 import ReportCardsPanel from "@/components/portal/staff/ReportCardsPanel";
+import PromotionPanel from "@/components/portal/staff/PromotionPanel";
+import SessionsPanel from "@/components/portal/staff/SessionsPanel";
+import GuideTour from "@/components/portal/GuideTour";
+import { STAFF_SIGNIN_TOUR, staffDashboardTour, staffTabTour, type StaffTab } from "@/lib/tours";
 import { isAdmin, ROLE_LABELS } from "@/lib/roles";
-import type { SignedInStaff } from "@/lib/types";
+import { apiKey, useApi } from "@/lib/client/api";
+import type { SignedInStaff, Term } from "@/lib/types";
 
 type Me = SignedInStaff | null;
-type Tab = "exams" | "results" | "students" | "classes" | "attendance" | "reports" | "team";
+type Tab = StaffTab;
 
 function useStaff() {
-  const [me, setMe] = useState<Me>(null);
-  const [loading, setLoading] = useState(true);
+  const client = useQueryClient();
+  const { data, isPending, refetch } = useApi<{ kind: string | null; staff?: SignedInStaff }>("/api/me");
+  const me: Me = data?.kind === "staff" && data.staff ? data.staff : null;
 
-  const refresh = useCallback(async () => {
-    try {
-      const d = await (await fetch("/api/me")).json();
-      setMe(d.kind === "staff" ? d.staff : null);
-    } catch {
-      setMe(null);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const refresh = useCallback(() => {
+    refetch();
+  }, [refetch]);
 
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
+  // A new person at the keyboard must never see the last person's cached lists.
+  const forgetEverything = useCallback(() => client.clear(), [client]);
+
+  const signedIn = useCallback(async () => {
+    forgetEverything();
+    await refetch();
+  }, [forgetEverything, refetch]);
 
   const signOut = useCallback(async () => {
     await browserClient().auth.signOut();
-    setMe(null);
-  }, []);
+    forgetEverything();
+    client.setQueryData(apiKey("/api/me"), { kind: null });
+  }, [client, forgetEverything]);
 
-  return { me, loading, refresh, signOut };
+  return { me, loading: isPending, refresh, signedIn, signOut };
 }
+
+const TAB_KEY = "jdc-staff-tab";
+
+/** The open tab, kept for this browser tab so a page reload lands back on it. */
+function useTab(): [Tab, (t: Tab) => void] {
+  const [tab, setTabState] = useState<Tab>("exams");
+  useEffect(() => {
+    try {
+      const saved = window.sessionStorage.getItem(TAB_KEY) as Tab | null;
+      if (saved && TABS.some(([key]) => key === saved)) setTabState(saved);
+    } catch {
+      /* storage blocked */
+    }
+  }, []);
+  const setTab = useCallback((t: Tab) => {
+    setTabState(t);
+    try {
+      window.sessionStorage.setItem(TAB_KEY, t);
+    } catch {
+      /* storage blocked */
+    }
+  }, []);
+  return [tab, setTab];
+}
+
+const ADMIN_TABS: Tab[] = ["classes", "sessions", "team"];
 
 const TABS: [Tab, string][] = [
   ["exams", "Exams & questions"],
   ["results", "Results"],
   ["students", "Students"],
   ["classes", "Classes"],
+  ["sessions", "Sessions & terms"],
   ["attendance", "Attendance"],
   ["reports", "Report cards"],
+  ["promotion", "Promotion"],
   ["team", "Staff accounts"],
 ];
 
 export default function StaffPage() {
-  const { me, loading, refresh, signOut } = useStaff();
-  const [tab, setTab] = useState<Tab>("exams");
+  const { me, loading, refresh, signedIn, signOut } = useStaff();
+  const [chosenTab, setTab] = useTab();
+  // A teacher never lands on an admin-only tab, even one remembered from an admin's visit.
+  const tab: Tab = me && !isAdmin(me.role) && ADMIN_TABS.includes(chosenTab) ? "exams" : chosenTab;
 
   return (
     <>
@@ -79,24 +114,41 @@ export default function StaffPage() {
                     {me.fullName} · {ROLE_LABELS[me.role]}
                   </p>
                 )}
+                {me && <CurrentTerm onOpen={isAdmin(me.role) ? () => setTab("sessions") : undefined} />}
               </div>
-              {me && (
-                <button
-                  type="button"
-                  onClick={signOut}
-                  className="cursor-pointer rounded-btn border border-white/40 px-4 py-2 text-sm font-semibold text-white transition-colors duration-200 hover:bg-white hover:text-ink"
-                >
-                  Sign out
-                </button>
+              {!loading && (
+                <div className="flex flex-wrap gap-2">
+                  {me ? (
+                    <GuideTour
+                      key={me.role}
+                      // v2 for admins: shows them where Sessions & terms moved to.
+                      id={`staff-dashboard-${me.role}-${isAdmin(me.role) ? "v2" : "v1"}`}
+                      steps={staffDashboardTour(me.role)}
+                    />
+                  ) : (
+                    <GuideTour id="staff-signin-v1" steps={STAFF_SIGNIN_TOUR} />
+                  )}
+                  {me && (
+                    <button
+                      type="button"
+                      data-tour="staff-signout"
+                      onClick={signOut}
+                      className="cursor-pointer rounded-btn border border-white/40 px-4 py-2 text-sm font-semibold text-white transition-colors duration-200 hover:bg-white hover:text-ink"
+                    >
+                      Sign out
+                    </button>
+                  )}
+                </div>
               )}
             </div>
             {me && (
               <div className="mt-6 flex flex-wrap gap-2">
-                {TABS.filter(([key]) => (key !== "team" && key !== "classes") || isAdmin(me.role)).map(
+                {TABS.filter(([key]) => !ADMIN_TABS.includes(key) || isAdmin(me.role)).map(
                   ([key, label]) => (
                     <button
                       key={key}
                       type="button"
+                      data-tour={`tab-${key}`}
                       onClick={() => setTab(key)}
                       className={`cursor-pointer rounded-btn px-4 py-2 text-sm font-semibold transition-colors duration-200 ${
                         tab === key
@@ -117,26 +169,74 @@ export default function StaffPage() {
           {loading ? (
             <p className="text-sm text-graphite">Loading…</p>
           ) : !me ? (
-            <StaffLogin onSignedIn={refresh} />
-          ) : tab === "exams" ? (
-            <ExamsPanel me={me} onUnauthorized={refresh} />
-          ) : tab === "results" ? (
-            <ResultsPanel me={me} onUnauthorized={refresh} />
-          ) : tab === "students" ? (
-            <RosterPanel onUnauthorized={refresh} />
-          ) : tab === "classes" ? (
-            <ClassesPanel onUnauthorized={refresh} />
-          ) : tab === "attendance" ? (
-            <AttendancePanel me={me} onUnauthorized={refresh} />
-          ) : tab === "reports" ? (
-            <ReportCardsPanel me={me} onUnauthorized={refresh} />
+            <StaffLogin onSignedIn={signedIn} />
           ) : (
-            <TeamPanel me={me} onUnauthorized={refresh} />
+            <>
+              <div className="mb-4 flex justify-end">
+                {/* Starts by itself the first time a tab is opened, after the page tour. */}
+                <GuideTour
+                  key={tab}
+                  id={tab === "promotion" ? "staff-promotion-v1" : `staff-tab-${tab}-v1`}
+                  steps={staffTabTour(tab, me.role)}
+                  label="How this tab works"
+                  tone="light"
+                  autoStartDelay={1400}
+                />
+              </div>
+              <TabPanel tab={tab} me={me} onUnauthorized={refresh} />
+            </>
           )}
         </section>
       </main>
       <Footer wide />
     </>
+  );
+}
+
+/** The open tab's panel. */
+function TabPanel({ tab, me, onUnauthorized }: { tab: Tab; me: SignedInStaff; onUnauthorized: () => void }) {
+  switch (tab) {
+    case "exams":
+      return <ExamsPanel me={me} onUnauthorized={onUnauthorized} />;
+    case "results":
+      return <ResultsPanel me={me} onUnauthorized={onUnauthorized} />;
+    case "students":
+      return <RosterPanel onUnauthorized={onUnauthorized} />;
+    case "classes":
+      return <ClassesPanel onUnauthorized={onUnauthorized} />;
+    case "sessions":
+      return <SessionsPanel onUnauthorized={onUnauthorized} />;
+    case "attendance":
+      return <AttendancePanel me={me} onUnauthorized={onUnauthorized} />;
+    case "reports":
+      return <ReportCardsPanel me={me} onUnauthorized={onUnauthorized} />;
+    case "promotion":
+      return <PromotionPanel me={me} onUnauthorized={onUnauthorized} />;
+    case "team":
+      return <TeamPanel me={me} onUnauthorized={onUnauthorized} />;
+  }
+}
+
+/** "Current term: Third Term · 2025/2026", so everyone can see which term the portal is on. */
+function CurrentTerm({ onOpen }: { onOpen?: () => void }) {
+  const { data } = useApi<{ terms: Term[] }>("/api/terms");
+  if (!data) return null;
+  const current = data.terms.find((t) => t.isCurrent);
+  return (
+    <p data-tour="current-term" className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+      <span className="rounded-btn bg-white/10 px-2 py-0.5 text-white/90">
+        {current ? `Current term: ${current.name} · ${current.sessionName}` : "No current term set"}
+      </span>
+      {onOpen && (
+        <button
+          type="button"
+          onClick={onOpen}
+          className="cursor-pointer font-semibold text-brand-gold hover:underline"
+        >
+          Change
+        </button>
+      )}
+    </p>
   );
 }
 
@@ -178,6 +278,7 @@ function StaffLogin({ onSignedIn }: { onSignedIn: () => void }) {
       </label>
       <input
         id="staff-email"
+        data-tour="staff-email"
         type="email"
         autoComplete="username"
         value={email}
@@ -190,6 +291,7 @@ function StaffLogin({ onSignedIn }: { onSignedIn: () => void }) {
       </label>
       <input
         id="staff-password"
+        data-tour="staff-password"
         type="password"
         autoComplete="current-password"
         value={password}

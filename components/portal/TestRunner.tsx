@@ -259,8 +259,8 @@ export default function TestRunner({
               {saveState === "saving"
                 ? "Saving…"
                 : saveState === "retrying"
-                  ? "Can't reach the server — your answers are safe, still trying"
-                  : "Answers saved — you can close this and come back"}
+                  ? "Can't reach the server. Your answers are safe, still trying"
+                  : "Answers saved. You can close this and come back"}
             </p>
           </div>
           <div

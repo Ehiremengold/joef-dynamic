@@ -178,6 +178,8 @@ export type Term = {
   sessionName?: string;
   name: "First Term" | "Second Term" | "Third Term";
   isCurrent: boolean;
+  /** Printed on the term's report sheets, e.g. "2026-09-14". */
+  nextTermBegins: string | null;
   createdAt: string;
 };
 
@@ -197,6 +199,28 @@ export type StudentAttendance = {
   daysPresent: number;
   updatedBy: string | null;
   updatedAt: string;
+};
+
+export type PromotionOutcome = "promoted" | "repeated" | "graduated";
+
+/** A student still waiting to be moved into a session. */
+export type PromotionCandidate = {
+  id: string;
+  fullName: string;
+  admissionNumber: string;
+  entryYear: string;
+};
+
+/** A move already made out of a class into a session; it can be undone. */
+export type Promotion = {
+  id: string;
+  studentId: string;
+  fullName: string;
+  admissionNumber: string;
+  outcome: PromotionOutcome;
+  /** e.g. "Obalende · JS2A"; null for a graduate. */
+  toClassLabel: string | null;
+  createdAt: string;
 };
 
 /** One student's results for one term, as printed on their report sheet. */

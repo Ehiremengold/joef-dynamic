@@ -63,7 +63,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     const exam = await getExam(id);
     if (!exam) return NextResponse.json({ error: "Exam not found" }, { status: 404 });
     if (examAccess(staff, exam) === "view") {
-      throw new AuthError("This exam belongs to another teacher — you can view it but not change it", 403);
+      throw new AuthError("This exam belongs to another teacher. You can view it but not change it", 403);
     }
     const body = await req.json().catch(() => null);
     const extraMins = Number(body?.extraMins);

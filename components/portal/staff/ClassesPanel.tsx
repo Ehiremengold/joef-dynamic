@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
+import { useApi, useInvalidate } from "@/lib/client/api";
 import { CLASSES, type Campus, type Class, type ClassSubject, type Staff, type Subject } from "@/lib/types";
 import { useConfirm } from "./useConfirm";
 
@@ -12,40 +13,26 @@ const DEPARTMENTS = [
 ];
 
 export default function ClassesPanel({ onUnauthorized }: { onUnauthorized: () => void }) {
-  const [campuses, setCampuses] = useState<Campus[]>([]);
-  const [classes, setClasses] = useState<Class[]>([]);
-  const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [staff, setStaff] = useState<Staff[]>([]);
-  const [loading, setLoading] = useState(true);
+  const invalidate = useInvalidate();
+  const campusesQ = useApi<{ campuses: Campus[] }>("/api/campuses", onUnauthorized);
+  const classesQ = useApi<{ classes: Class[] }>("/api/classes", onUnauthorized);
+  const subjectsQ = useApi<{ subjects: Subject[] }>("/api/subjects", onUnauthorized);
+  const staffQ = useApi<{ staff: Staff[] }>("/api/staff", onUnauthorized);
   const [error, setError] = useState("");
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [cRes, clRes, sRes, stRes] = await Promise.all([
-        fetch("/api/campuses"),
-        fetch("/api/classes"),
-        fetch("/api/subjects"),
-        fetch("/api/staff"),
-      ]);
-      if ([cRes, clRes, sRes, stRes].some((r) => r.status === 401 || r.status === 403)) {
-        return onUnauthorized();
-      }
-      const [c, cl, s, st] = await Promise.all([cRes.json(), clRes.json(), sRes.json(), stRes.json()]);
-      setCampuses(c.campuses || []);
-      setClasses(cl.classes || []);
-      setSubjects(s.subjects || []);
-      setStaff(st.staff || []);
-    } finally {
-      setLoading(false);
-    }
-  }, [onUnauthorized]);
+  // Every list on this tab can change what another shows (a removed campus
+  // takes its classes), so a change refreshes them all.
+  const load = useCallback(() => {
+    invalidate("/api/campuses", "/api/classes", "/api/subjects");
+  }, [invalidate]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  if (loading) return <p className="text-sm text-graphite">Loading…</p>;
+  if ([campusesQ, classesQ, subjectsQ, staffQ].some((q) => q.isPending)) {
+    return <p className="text-sm text-graphite">Loading…</p>;
+  }
+  const campuses = campusesQ.data?.campuses ?? [];
+  const classes = classesQ.data?.classes ?? [];
+  const subjects = subjectsQ.data?.subjects ?? [];
+  const staff = staffQ.data?.staff ?? [];
 
   return (
     <div className="space-y-10">
@@ -118,7 +105,7 @@ function CampusesSection({
   }
 
   return (
-    <section>
+    <section data-tour="classes-campuses">
       {dialog}
       <h2 className="font-display text-xl font-bold tracking-tight">Campuses</h2>
       <div className="mt-3 flex flex-wrap gap-2">
@@ -213,11 +200,11 @@ function SubjectsSection({
   }
 
   return (
-    <section>
+    <section data-tour="classes-subjects">
       {dialog}
       <h2 className="font-display text-xl font-bold tracking-tight">Subject catalog</h2>
       <p className="mt-1 text-[13px] text-pewter">
-        Senior secondary science, art and commercial subjects all live here — tag each with its
+        Senior secondary science, art and commercial subjects all live here. Tag each with its
         department, then add the ones a class offers below.
       </p>
       <div className="mt-3 flex flex-wrap gap-2">
@@ -343,11 +330,11 @@ function ClassesSection({
       {dialog}
       <h2 className="font-display text-xl font-bold tracking-tight">Classes &amp; arms</h2>
       <p className="mt-1 text-[13px] text-pewter">
-        Add arms freely per campus — Ikoyi can run several arms per level, Obalende can run one.
+        Add arms freely per campus: Ikoyi can run several arms per level, Obalende can run one.
         Assign each class a class teacher and the subjects it offers.
       </p>
 
-      <form onSubmit={add} className="mt-3 flex flex-wrap items-end gap-2">
+      <form data-tour="classes-add" onSubmit={add} className="mt-3 flex flex-wrap items-end gap-2">
         <div>
           <label className="block text-[13px] font-semibold" htmlFor="cls-campus">Campus</label>
           <select
@@ -410,6 +397,7 @@ function ClassesSection({
                 <label className="text-[13px] text-pewter" htmlFor={`teacher-${c.id}`}>Class teacher</label>
                 <select
                   id={`teacher-${c.id}`}
+                  data-tour="class-teacher"
                   value={c.classTeacherId ?? ""}
                   onChange={(e) => setTeacher(c, e.target.value)}
                   className="cursor-pointer rounded-btn border border-smoke bg-white px-2 py-1.5 text-[13px] outline-none focus:border-brand-navy"
@@ -421,6 +409,7 @@ function ClassesSection({
                 </select>
                 <button
                   type="button"
+                  data-tour="class-subjects"
                   onClick={() => setExpanded(expanded === c.id ? null : c.id)}
                   className="cursor-pointer text-[13px] font-semibold text-brand-navy hover:underline"
                 >
@@ -428,6 +417,7 @@ function ClassesSection({
                 </button>
                 <button
                   type="button"
+                  data-tour="class-remove"
                   onClick={() => remove(c)}
                   className="cursor-pointer text-[13px] font-semibold text-brand-red hover:underline"
                 >
@@ -458,25 +448,13 @@ function ClassSubjectsEditor({
   subjects: Subject[];
   onUnauthorized: () => void;
 }) {
-  const [assigned, setAssigned] = useState<ClassSubject[]>([]);
-  const [loading, setLoading] = useState(true);
+  const invalidate = useInvalidate();
+  const assignedQ = useApi<{ subjects: ClassSubject[] }>(`/api/classes/${classId}/subjects`, onUnauthorized);
+  const assigned = assignedQ.data?.subjects ?? [];
+  const loading = assignedQ.isPending;
   const [adding, setAdding] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/classes/${classId}/subjects`);
-      if (res.status === 401 || res.status === 403) return onUnauthorized();
-      const d = await res.json();
-      setAssigned(d.subjects || []);
-    } finally {
-      setLoading(false);
-    }
-  }, [classId, onUnauthorized]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const load = useCallback(() => invalidate(`/api/classes/${classId}/subjects`), [invalidate, classId]);
 
   const assignedIds = new Set(assigned.map((a) => a.subjectId));
   const available = subjects.filter((s) => !assignedIds.has(s.id));

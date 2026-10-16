@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { EDITABLE, useApi, useInvalidate } from "@/lib/client/api";
 import { CLASSES, type Class, type Student, type Subject } from "@/lib/types";
 import Pagination from "./Pagination";
 import { usePagedList } from "./usePagedList";
@@ -23,7 +24,6 @@ export default function RosterPanel({
   onUnauthorized: () => void;
 }) {
   const { confirm, dialog } = useConfirm();
-  const [classes, setClasses] = useState<Class[]>([]);
   const [name, setName] = useState("");
   const [classFilter, setClassFilter] = useState("");
   const [notice, setNotice] = useState<{ text: string; pin?: string } | null>(null);
@@ -35,12 +35,7 @@ export default function RosterPanel({
     onUnauthorized,
   });
 
-  useEffect(() => {
-    fetch("/api/classes")
-      .then((r) => (r.ok ? r.json() : { classes: [] }))
-      .then((d) => setClasses(d.classes || []))
-      .catch(() => {});
-  }, []);
+  const classes = useApi<{ classes: Class[] }>("/api/classes", onUnauthorized).data?.classes ?? [];
 
   /** Assign to a class (classId set) or clear the assignment (classId ""). */
   async function assignClass(s: Student, classId: string) {
@@ -109,7 +104,7 @@ export default function RosterPanel({
             <p className="text-sm font-semibold text-ink">
               {notice.text}{" "}
               {notice.pin && <span className="font-display text-lg text-brand-green">{notice.pin}</span>}
-              <span className="ml-2 font-normal text-graphite">Write this down — it won&rsquo;t be shown again.</span>
+              <span className="ml-2 font-normal text-graphite">Write this down. It won&rsquo;t be shown again.</span>
             </p>
             <button
               type="button"
@@ -121,7 +116,7 @@ export default function RosterPanel({
           </div>
         )}
 
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <div data-tour="students-search" className="mt-4 grid gap-3 sm:grid-cols-2">
           <input
             type="text"
             value={name}
@@ -141,7 +136,7 @@ export default function RosterPanel({
           </select>
         </div>
 
-        <div className="mt-4 overflow-x-auto rounded-card border border-smoke bg-white">
+        <div data-tour="students-table" className="mt-4 overflow-x-auto rounded-card border border-smoke bg-white">
           {loading && students.length === 0 ? (
             <p className="p-6 text-sm text-graphite">Loading…</p>
           ) : students.length === 0 ? (
@@ -170,6 +165,7 @@ export default function RosterPanel({
                         value={s.classId ?? ""}
                         onChange={(e) => assignClass(s, e.target.value)}
                         aria-label={`Class for ${s.fullName}`}
+                        data-tour="student-class"
                         className="cursor-pointer rounded-btn border border-smoke bg-white px-2 py-1.5 text-[13px] outline-none focus:border-brand-navy"
                       >
                         <option value="">Unassigned · {s.className}</option>
@@ -190,6 +186,7 @@ export default function RosterPanel({
                       <div className="flex gap-3 whitespace-nowrap">
                         <button
                           type="button"
+                          data-tour="student-pin"
                           onClick={() => resetPin(s)}
                           className="cursor-pointer text-[13px] font-semibold text-brand-navy hover:underline"
                         >
@@ -197,6 +194,7 @@ export default function RosterPanel({
                         </button>
                         <button
                           type="button"
+                          data-tour="student-active"
                           onClick={() => toggleActive(s)}
                           className="cursor-pointer text-[13px] font-semibold text-brand-red hover:underline"
                         >
@@ -204,6 +202,7 @@ export default function RosterPanel({
                         </button>
                         <button
                           type="button"
+                          data-tour="student-subjects"
                           onClick={() => setSubjectsFor(s)}
                           disabled={!s.classId}
                           className="cursor-pointer text-[13px] font-semibold text-brand-navy hover:underline disabled:cursor-not-allowed disabled:opacity-40"
@@ -212,6 +211,7 @@ export default function RosterPanel({
                           Subjects
                         </button>
                         <a
+                          data-tour="student-transcript"
                           href={`/api/students/${s.id}/transcript`}
                           target="_blank"
                           rel="noopener noreferrer"
@@ -251,40 +251,24 @@ function SubjectExemptions({
   onClose: () => void;
   onUnauthorized: () => void;
 }) {
-  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const invalidate = useInvalidate();
+  const exemptionsUrl = `/api/students/${student.id}/subject-exemptions`;
+  const subjectsQ = useApi<{ subjects: { subjectId: string; subjectName: string }[] }>(
+    student.classId ? `/api/classes/${student.classId}/subjects` : null,
+    onUnauthorized
+  );
+  const exemptionsQ = useApi<{ subjectIds: string[] }>(exemptionsUrl, onUnauthorized, EDITABLE);
+  const subjects: Pick<Subject, "id" | "name">[] = (subjectsQ.data?.subjects ?? []).map((cs) => ({
+    id: cs.subjectId,
+    name: cs.subjectName,
+  }));
+  const loading = (Boolean(student.classId) && subjectsQ.isPending) || exemptionsQ.isPending;
   const [exemptIds, setExemptIds] = useState<Set<string>>(new Set());
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    let cancelled = false;
-    async function run() {
-      setLoading(true);
-      try {
-        const [subjRes, exRes] = await Promise.all([
-          fetch(`/api/classes/${student.classId}/subjects`),
-          fetch(`/api/students/${student.id}/subject-exemptions`),
-        ]);
-        if (subjRes.status === 401 || exRes.status === 401) return onUnauthorized();
-        const subjData = await subjRes.json();
-        const exData = await exRes.json();
-        if (cancelled) return;
-        setSubjects(
-          (subjData.subjects || []).map((cs: { subjectId: string; subjectName: string }) => ({
-            id: cs.subjectId,
-            name: cs.subjectName,
-          }))
-        );
-        setExemptIds(new Set(exData.subjectIds || []));
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    run();
-    return () => {
-      cancelled = true;
-    };
-  }, [student.classId, student.id, onUnauthorized]);
+    if (exemptionsQ.data) setExemptIds(new Set(exemptionsQ.data.subjectIds || []));
+  }, [exemptionsQ.data]);
 
   function toggle(id: string) {
     setExemptIds((prev) => {
@@ -304,7 +288,10 @@ function SubjectExemptions({
         body: JSON.stringify({ subjectIds: Array.from(exemptIds) }),
       });
       if (res.status === 401) return onUnauthorized();
-      if (res.ok) onClose();
+      if (res.ok) {
+        await invalidate(exemptionsUrl);
+        onClose();
+      }
     } finally {
       setSaving(false);
     }
@@ -406,7 +393,7 @@ function AddStudent({
   }
 
   return (
-    <form onSubmit={submit} className="h-fit rounded-card border border-smoke bg-white p-6">
+    <form data-tour="students-add" onSubmit={submit} className="h-fit rounded-card border border-smoke bg-white p-6">
       <h2 className="font-display text-xl font-bold tracking-tight">Add student</h2>
       <p className="mt-2 text-[13px] leading-relaxed text-pewter">
         A 6-digit PIN is generated. Give the admission number + PIN to the

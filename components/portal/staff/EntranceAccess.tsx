@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { apiKey, useApi } from "@/lib/client/api";
 
 type Access = { code: string | null; active: boolean };
 
@@ -9,27 +11,16 @@ export default function EntranceAccess({
 }: {
   onUnauthorized: () => void;
 }) {
-  const [access, setAccess] = useState<Access>({ code: null, active: false });
+  const client = useQueryClient();
+  const accessQ = useApi<{ access: Access }>("/api/entrance-code", onUnauthorized);
+  const access: Access = accessQ.data?.access ?? { code: null, active: false };
   const [draft, setDraft] = useState("");
-  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  const load = useCallback(async () => {
-    try {
-      const res = await fetch("/api/entrance-code");
-      if (res.status === 401) return onUnauthorized();
-      const d = await res.json();
-      setAccess(d.access);
-      setDraft(d.access?.code || "");
-    } finally {
-      setLoading(false);
-    }
-  }, [onUnauthorized]);
-
   useEffect(() => {
-    load();
-  }, [load]);
+    setDraft(accessQ.data?.access?.code || "");
+  }, [accessQ.data]);
 
   async function update(patch: { code?: string | null; active?: boolean }) {
     setBusy(true);
@@ -43,8 +34,7 @@ export default function EntranceAccess({
       if (res.status === 401) return onUnauthorized();
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "Could not update");
-      setAccess(d.access);
-      setDraft(d.access?.code || "");
+      client.setQueryData(apiKey("/api/entrance-code"), { access: d.access });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not update");
     } finally {
@@ -52,10 +42,10 @@ export default function EntranceAccess({
     }
   }
 
-  if (loading) return null;
+  if (accessQ.isPending) return null;
 
   return (
-    <div className="rounded-card border border-smoke bg-white p-6">
+    <div data-tour="exams-entrance" className="rounded-card border border-smoke bg-white p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="font-display text-xl font-bold tracking-tight">
@@ -125,7 +115,7 @@ export default function EntranceAccess({
         {access.code
           ? access.active
             ? "Candidates can register now with this code."
-            : "Code saved but not released — candidates can't register yet."
+            : "Code saved but not released. Candidates can't register yet."
           : "No code set yet."}
       </p>
     </div>

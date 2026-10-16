@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import QueryProvider from "@/components/portal/QueryProvider";
 
 // The portal is private — never index it or follow its links.
 export const metadata: Metadata = {
@@ -10,5 +11,5 @@ export default function PortalLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return children;
+  return <QueryProvider>{children}</QueryProvider>;
 }

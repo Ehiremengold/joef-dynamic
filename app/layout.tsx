@@ -18,7 +18,7 @@ export const metadata: Metadata = {
     template: "%s | Joef Dynamic College, Ikoyi Lagos",
   },
   description:
-    "Joef Dynamic College is a leading private school in Ikoyi, Lagos — Kindergarten, Nursery, Primary and Secondary (JSS1–SS3). Blended British & Nigerian curriculum, coding & robotics, music and moral character education. Admissions open for 2026/2027 — book a school tour.",
+    "Joef Dynamic College is a leading private school in Ikoyi, Lagos, offering Kindergarten, Nursery, Primary and Secondary (JSS1–SS3). Blended British & Nigerian curriculum, coding & robotics, music and moral character education. Admissions open for 2026/2027. Book a school tour.",
   keywords: [
     "Joef Dynamic College",
     "schools in Ikoyi",
@@ -47,7 +47,7 @@ export const metadata: Metadata = {
     siteName: "Joef Dynamic College",
     title: "Joef Dynamic College | Private School in Ikoyi, Lagos",
     description:
-      "A leading private school in Ikoyi, Lagos — Nursery to SS3 with a blended British & Nigerian curriculum, coding & robotics and music. Admissions open 2026/2027.",
+      "A leading private school in Ikoyi, Lagos, from Nursery to SS3 with a blended British & Nigerian curriculum, coding & robotics and music. Admissions open 2026/2027.",
   },
   twitter: {
     card: "summary_large_image",

@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
+import { useApi, useInvalidate } from "@/lib/client/api";
 import { pageCount, pageRange } from "@/lib/paging";
 import { isSuperAdmin, ROLE_LABELS } from "@/lib/roles";
 import type { SignedInStaff, Staff, StaffRole } from "@/lib/types";
@@ -18,27 +19,22 @@ export default function TeamPanel({
   const currentEmail = me.email;
   // Only a super admin can make a super admin, or change one's account.
   const roleChoices: StaffRole[] = isSuperAdmin(me.role) ? ["teacher", "admin", "super_admin"] : ["teacher", "admin"];
-  const [staff, setStaff] = useState<Staff[]>([]);
-  const [loading, setLoading] = useState(true);
+  const staffQ = useApi<{ staff: Staff[] }>("/api/staff", onUnauthorized);
+  const staff = staffQ.data?.staff ?? [];
+  const loading = staffQ.isPending;
   const [busyId, setBusyId] = useState("");
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
   const [error, setError] = useState("");
 
+  const { refetch } = staffQ;
+  const invalidate = useInvalidate();
+  // Classes show their class teacher's name, so a renamed account refreshes them too.
   const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/staff");
-      if (res.status === 401 || res.status === 403) return onUnauthorized();
-      const d = await res.json();
-      const list: Staff[] = d.staff || [];
-      setStaff(list);
-      return list;
-    } finally {
-      setLoading(false);
-    }
-  }, [onUnauthorized]);
+    invalidate("/api/classes");
+    return (await refetch()).data?.staff;
+  }, [refetch, invalidate]);
 
   /** Accounts list oldest-first, so a new one is on the last page — go there. */
   const showNewest = useCallback(async () => {
@@ -53,10 +49,6 @@ export default function TeamPanel({
   // Never past the end, even if the list is shorter than when the page was picked.
   const shownPage = Math.min(page, pageCount(shown.length));
   const { from, to } = pageRange(shownPage);
-
-  useEffect(() => {
-    load();
-  }, [load]);
 
   /** Partial update — send only what changed, so nothing else gets clobbered. */
   async function patch(s: Staff, body: Record<string, unknown>) {
@@ -131,6 +123,7 @@ export default function TeamPanel({
             setPage(1);
           }}
           placeholder="Search by name or email"
+          data-tour="team-search"
           className="mt-4 w-full rounded-btn border border-smoke px-3 py-2.5 text-sm outline-none focus:border-brand-navy sm:max-w-sm"
         />
         {error && (
@@ -138,7 +131,7 @@ export default function TeamPanel({
             {error}
           </p>
         )}
-        <div className="mt-4 overflow-x-auto rounded-card border border-smoke bg-white">
+        <div data-tour="team-table" className="mt-4 overflow-x-auto rounded-card border border-smoke bg-white">
           {loading && staff.length === 0 ? (
             <p className="p-6 text-sm text-graphite">Loading…</p>
           ) : shown.length === 0 ? (
@@ -206,6 +199,7 @@ export default function TeamPanel({
                             disabled={busyId === s.id}
                             onChange={(e) => changeRole(s, e.target.value as Staff["role"])}
                             aria-label={`Role for ${s.fullName}`}
+                            data-tour="team-role"
                             className={`cursor-pointer rounded-btn border border-smoke px-2 py-1 text-xs font-bold uppercase outline-none focus:border-brand-navy disabled:opacity-50 ${
                               s.role === "teacher" ? "bg-mist text-graphite" : "bg-brand-gold text-ink"
                             }`}
@@ -229,6 +223,7 @@ export default function TeamPanel({
                             <button
                               type="button"
                               disabled={busyId === s.id}
+                              data-tour="team-rename"
                               onClick={() => setRenaming({ id: s.id, name: s.fullName })}
                               className="cursor-pointer text-[13px] font-semibold text-brand-navy hover:underline disabled:opacity-50"
                             >
@@ -239,13 +234,14 @@ export default function TeamPanel({
                             <button
                               type="button"
                               disabled={busyId === s.id}
+                              data-tour="team-active"
                               onClick={() => patch(s, { active: !s.active })}
                               className="cursor-pointer text-[13px] font-semibold text-brand-red hover:underline disabled:opacity-50"
                             >
                               {s.active ? "Deactivate" : "Reactivate"}
                             </button>
                           )}
-                          {locked && <span className="text-[13px] text-pewter">—</span>}
+                          {locked && <span className="text-[13px] text-pewter">Super admin only</span>}
                         </div>
                       </td>
                     </tr>
@@ -305,7 +301,7 @@ function AddStaff({
   }
 
   return (
-    <form onSubmit={submit} className="h-fit rounded-card border border-smoke bg-white p-6">
+    <form data-tour="team-add" onSubmit={submit} className="h-fit rounded-card border border-smoke bg-white p-6">
       <h2 className="font-display text-xl font-bold tracking-tight">Add staff</h2>
       <p className="mt-2 text-[13px] leading-relaxed text-pewter">
         Create a login for a teacher or administrator. Share the password with

@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
+import { useApi, useInvalidate } from "@/lib/client/api";
 import { isSuperAdmin } from "@/lib/roles";
 import type { SignedInStaff } from "@/lib/types";
 import { useConfirm } from "./useConfirm";
@@ -18,7 +19,7 @@ type DeletionRequest = {
 
 const STATUS: Record<DeletionRequest["status"], { label: string; className: string }> = {
   pending: { label: "Waiting for approval", className: "bg-brand-gold text-ink" },
-  approved: { label: "Approved — deleted", className: "bg-brand-green/15 text-brand-green" },
+  approved: { label: "Approved and deleted", className: "bg-brand-green/15 text-brand-green" },
   rejected: { label: "Rejected", className: "bg-mist text-graphite" },
   obsolete: { label: "Already gone or changed", className: "bg-mist text-graphite" },
 };
@@ -38,20 +39,13 @@ export default function ApprovalsPanel({
   onUnauthorized: () => void;
 }) {
   const { confirm, dialog } = useConfirm();
-  const [requests, setRequests] = useState<DeletionRequest[]>([]);
+  const invalidate = useInvalidate();
+  const requests = useApi<{ requests: DeletionRequest[] }>("/api/deletion-requests", onUnauthorized).data?.requests ?? [];
   const [busyId, setBusyId] = useState("");
   const [error, setError] = useState("");
   const canDecide = isSuperAdmin(me.role);
 
-  const load = useCallback(async () => {
-    const res = await fetch("/api/deletion-requests");
-    if (res.status === 401) return onUnauthorized();
-    if (res.ok) setRequests((await res.json()).requests || []);
-  }, [onUnauthorized]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const load = useCallback(() => invalidate("/api/deletion-requests"), [invalidate]);
 
   async function decide(r: DeletionRequest, approve: boolean) {
     const what = r.questionText ? `this question from "${r.examTitle}"` : `the exam "${r.examTitle}" and all its questions`;
@@ -89,7 +83,7 @@ export default function ApprovalsPanel({
   const pending = requests.filter((r) => r.status === "pending").length;
 
   return (
-    <section className="rounded-card border border-smoke bg-white p-6">
+    <section data-tour="exams-approvals" className="rounded-card border border-smoke bg-white p-6">
       {dialog}
       <h2 className="font-display text-xl font-bold tracking-tight">
         {canDecide ? "Deletion requests" : "Your deletion requests"}

@@ -59,7 +59,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
     }
     const access = examAccess(staff, exam);
     if (access === "view") {
-      throw new AuthError("This exam belongs to another teacher — you can view it but not change it", 403);
+      throw new AuthError("This exam belongs to another teacher. You can view it but not change it", 403);
     }
     const body = await req.json().catch(() => null);
     if (!body) {
@@ -69,7 +69,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
       const kept = new Set(body.questions.map((q: { id?: unknown }) => q?.id).filter(Boolean));
       if (exam.questions.some((q) => !kept.has(q.id))) {
         throw new AuthError(
-          "Removing a question from someone else's exam needs a super admin's approval — use Request removal",
+          "Removing a question from someone else's exam needs a super admin's approval. Use Request removal",
           403
         );
       }
@@ -129,7 +129,7 @@ export async function DELETE(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: "Exam not found" }, { status: 404 });
     }
     if (examAccess(staff, exam) !== "manage") {
-      throw new AuthError("Deleting someone else's exam needs a super admin's approval — use Request deletion", 403);
+      throw new AuthError("Deleting someone else's exam needs a super admin's approval. Use Request deletion", 403);
     }
     await deleteExam(id);
     return NextResponse.json({ ok: true });

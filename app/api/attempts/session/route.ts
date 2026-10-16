@@ -21,7 +21,7 @@ async function resolve(req: NextRequest): Promise<
   if (!taker) {
     return {
       error: NextResponse.json(
-        { error: "Your session has expired — please sign in again" },
+        { error: "Your session has expired. Please sign in again" },
         { status: 401 }
       ),
     };

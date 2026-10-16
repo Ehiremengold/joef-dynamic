@@ -45,7 +45,7 @@ export async function GET(req: NextRequest, { params }: Params) {
         identifier:
           (a.studentId && admissionById.get(a.studentId)) ||
           (a.candidateId && candidateNoById.get(a.candidateId)) ||
-          "—",
+          "-",
         score: a.score,
         total: a.total,
         submittedAt: a.submittedAt,

@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { useApi, useInvalidate } from "@/lib/client/api";
 import { parseQuestions } from "@/lib/questionParser";
 import { examAccess, isAdmin, type ExamAccess } from "@/lib/roles";
 import { CLASSES, type Exam, type SignedInStaff } from "@/lib/types";
@@ -18,11 +19,11 @@ export default function ExamsPanel({
   me: SignedInStaff;
   onUnauthorized: () => void;
 }) {
-  // Bumped when a deletion is requested, so the approvals list picks it up.
-  const [requests, setRequests] = useState(0);
-  const [exams, setExams] = useState<Exam[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const invalidate = useInvalidate();
+  const examsQ = useApi<{ exams: Exam[] }>("/api/exams", onUnauthorized);
+  const exams = examsQ.data?.exams ?? [];
+  const loading = examsQ.isPending;
+  const error = examsQ.error?.message ?? "";
 
   const authFetch: AuthFetch = useCallback(
     async (url, init) => {
@@ -32,32 +33,22 @@ export default function ExamsPanel({
       });
       if (res.status === 401) {
         onUnauthorized();
-        throw new Error("Your session has expired — please sign in again");
+        throw new Error("Your session has expired. Please sign in again");
       }
       return res;
     },
     [onUnauthorized]
   );
 
-  const reload = useCallback(async () => {
-    try {
-      const d = await (await authFetch("/api/exams")).json();
-      setExams(d.exams || []);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load exams");
-    } finally {
-      setLoading(false);
-    }
-  }, [authFetch]);
-
-  useEffect(() => {
-    reload();
-  }, [reload]);
+  // An exam change can change results too (a deleted exam, a cleared score).
+  const reload = useCallback(() => {
+    invalidate("/api/exams", "/api/attempts");
+  }, [invalidate]);
 
   return (
     <div className="space-y-8">
       <EntranceAccess onUnauthorized={onUnauthorized} />
-      {isAdmin(me.role) && <ApprovalsPanel key={requests} me={me} onDecided={reload} onUnauthorized={onUnauthorized} />}
+      {isAdmin(me.role) && <ApprovalsPanel me={me} onDecided={reload} onUnauthorized={onUnauthorized} />}
       <div className="grid gap-8 lg:grid-cols-[380px_1fr]">
         <CreateExam authFetch={authFetch} onCreated={reload} />
       <div className="min-w-0">
@@ -67,14 +58,14 @@ export default function ExamsPanel({
           <p className="mt-4 text-sm text-graphite">Loading…</p>
         ) : exams.length === 0 ? (
           <p className="mt-4 rounded-card border border-smoke bg-white p-6 text-sm text-graphite">
-            No exams yet — create your first one on the left.
+            No exams yet. Create your first one on the left.
           </p>
         ) : (
-          <div className="mt-4 space-y-4">
+          <div data-tour="exams-list" className="mt-4 space-y-4">
             {exams.map((exam) => (
               <ExamCard key={exam.id} exam={exam} authFetch={authFetch} onChanged={reload}
               access={examAccess(me, exam)}
-              onRequested={() => setRequests((n) => n + 1)}
+              onRequested={() => invalidate("/api/deletion-requests")}
             />
             ))}
           </div>
@@ -120,7 +111,7 @@ function CreateExam({
   }
 
   return (
-    <form onSubmit={submit} className="h-fit rounded-card border border-smoke bg-white p-6">
+    <form data-tour="exams-new" onSubmit={submit} className="h-fit rounded-card border border-smoke bg-white p-6">
       <h2 className="font-display text-xl font-bold tracking-tight">New exam</h2>
 
       <label className="mt-5 block text-sm font-semibold" htmlFor="exam-title">Title</label>
@@ -284,13 +275,13 @@ function ExamCard({
         <div className="min-w-0 flex-1">
           <p className="truncate font-display font-bold tracking-tight">{exam.title}</p>
           <p className="text-[13px] text-graphite">
-            {exam.questions.length} questions · {exam.durationMins} mins
+            {exam.questions.length} question{exam.questions.length === 1 ? "" : "s"} · {exam.durationMins} mins
           </p>
         </div>
         {access === "view" && (
-          <span className="rounded-btn bg-mist px-2 py-0.5 text-xs font-semibold text-graphite">View only</span>
+          <span data-tour="exam-viewonly" className="rounded-btn bg-mist px-2 py-0.5 text-xs font-semibold text-graphite">View only</span>
         )}
-        <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold">
+        <label data-tour="exam-open" className="flex cursor-pointer items-center gap-2 text-sm font-semibold">
           <input
             type="checkbox"
             checked={exam.active}
@@ -306,6 +297,7 @@ function ExamCard({
         </label>
         <button
           type="button"
+          data-tour="exam-questions"
           onClick={() => setPanel(open ? "none" : "questions")}
           className="cursor-pointer rounded-btn border border-ink px-3 py-1.5 text-sm font-semibold transition-colors duration-200 hover:bg-ink hover:text-white"
         >
@@ -313,12 +305,14 @@ function ExamCard({
         </button>
         <button
           type="button"
+          data-tour="exam-sittings"
           onClick={() => setPanel(panel === "sittings" ? "none" : "sittings")}
           className="cursor-pointer rounded-btn border border-ink px-3 py-1.5 text-sm font-semibold transition-colors duration-200 hover:bg-ink hover:text-white"
         >
           {panel === "sittings" ? "Close" : "Sittings"}
         </button>
         <a
+          data-tour="exam-download"
           href={`/api/exams/${exam.id}/results-pdf`}
           target="_blank"
           rel="noopener noreferrer"
@@ -329,6 +323,7 @@ function ExamCard({
         {access !== "view" && (
           <button
             type="button"
+            data-tour="exam-delete"
             onClick={() => (access === "manage" ? remove() : requestDeletion())}
             disabled={busy}
             aria-label={`${access === "manage" ? "Delete" : "Request deletion of"} ${exam.title}`}
@@ -383,31 +378,21 @@ function mmss(secs: number) {
  * it back.
  */
 function SittingsPanel({ exam, authFetch, access }: { exam: Exam; authFetch: AuthFetch; access: ExamAccess }) {
-  const [inProgress, setInProgress] = useState<Sitting[]>([]);
-  const [submitted, setSubmitted] = useState<Submitted[]>([]);
-  const [loading, setLoading] = useState(true);
+  const invalidate = useInvalidate();
+  const sittingsUrl = `/api/exams/${exam.id}/sittings`;
+  // Live-ish: a teacher watching a test in progress wants the clocks to move.
+  const sittingsQ = useApi<{ inProgress: Sitting[]; submitted: Submitted[] }>(sittingsUrl, undefined, {
+    refetchInterval: 15_000,
+  });
+  const inProgress = sittingsQ.data?.inProgress ?? [];
+  const submitted = sittingsQ.data?.submitted ?? [];
+  const loading = sittingsQ.isPending;
   const [busyId, setBusyId] = useState("");
-  const [error, setError] = useState("");
+  const [actionError, setError] = useState("");
+  const error = actionError || sittingsQ.error?.message || "";
   const { confirm, dialog } = useConfirm();
 
-  const reload = useCallback(async () => {
-    try {
-      const d = await (await authFetch(`/api/exams/${exam.id}/sittings`)).json();
-      setInProgress(d.inProgress || []);
-      setSubmitted(d.submitted || []);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load sittings");
-    } finally {
-      setLoading(false);
-    }
-  }, [authFetch, exam.id]);
-
-  // Live-ish: a teacher watching a test in progress wants the clocks to move.
-  useEffect(() => {
-    reload();
-    const t = setInterval(reload, 15_000);
-    return () => clearInterval(t);
-  }, [reload]);
+  const reload = useCallback(() => invalidate(sittingsUrl, "/api/attempts"), [invalidate, sittingsUrl]);
 
   async function grant(sessionId: string, extraMins: number) {
     setBusyId(sessionId);
@@ -499,7 +484,7 @@ function SittingsPanel({ exam, authFetch, access }: { exam: Exam; authFetch: Aut
       )}
 
       <p className="mt-3 text-[13px] leading-relaxed text-pewter">
-        The clock keeps running even if a student closes the tab — their answers
+        The clock keeps running even if a student closes the tab. Their answers
         are saved as they go, so they can sign back in and carry on. If someone
         genuinely lost time to a power cut or a network drop, hand it back here.
       </p>
@@ -846,7 +831,7 @@ function PasteQuestions({
         <>
           <p className={`mt-3 text-sm font-semibold ${needFixing ? "text-brand-red" : "text-brand-green"}`}>
             {needFixing
-              ? `${parsed.length} question${parsed.length === 1 ? "" : "s"} found — ${needFixing} need${needFixing === 1 ? "s" : ""} fixing before they can be added`
+              ? `${parsed.length} question${parsed.length === 1 ? "" : "s"} found, ${needFixing} need${needFixing === 1 ? "s" : ""} fixing before they can be added`
               : `${parsed.length} question${parsed.length === 1 ? "" : "s"} ready to add`}
           </p>
           <ol className="mt-3 max-h-[480px] space-y-2 overflow-y-auto">

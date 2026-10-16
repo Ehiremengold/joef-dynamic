@@ -1,39 +1,39 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { apiKey, useApi, useInvalidate } from "@/lib/client/api";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import TestRunner, { type SubmittedResult } from "@/components/portal/TestRunner";
+import GuideTour from "@/components/portal/GuideTour";
+import { STUDENT_AREA_TOUR, STUDENT_SIGNIN_TOUR } from "@/lib/tours";
 import type { Attempt, ClassName, PublicExam } from "@/lib/types";
 
 type Me = { fullName: string; className: ClassName; admissionNumber?: string } | null;
 
 export default function CbtPage() {
-  const [me, setMe] = useState<Me>(null);
-  const [loading, setLoading] = useState(true);
+  const client = useQueryClient();
+  const meQ = useApi<{ kind: string | null; taker?: { kind: string; name: string; className: ClassName } }>("/api/me");
+  const me: Me =
+    meQ.data?.kind === "taker" && meQ.data.taker?.kind === "student"
+      ? { fullName: meQ.data.taker.name, className: meQ.data.taker.className }
+      : null;
+  const loading = meQ.isPending;
   const [tab, setTab] = useState<"take" | "results">("take");
+  const { refetch } = meQ;
 
+  // A shared school computer: the next student must never see the last one's cached tests or scores.
   const refresh = useCallback(async () => {
-    try {
-      const d = await (await fetch("/api/me")).json();
-      if (d.kind === "taker" && d.taker.kind === "student") {
-        setMe({ fullName: d.taker.name, className: d.taker.className });
-      } else {
-        setMe(null);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
+    client.clear();
+    await refetch();
+  }, [client, refetch]);
 
   async function signOut() {
     await fetch("/api/auth/logout", { method: "POST" });
-    setMe(null);
+    client.clear();
+    client.setQueryData(apiKey("/api/me"), { kind: null });
   }
 
   return (
@@ -56,18 +56,28 @@ export default function CbtPage() {
                   </p>
                 )}
               </div>
-              {me && (
-                <button
-                  type="button"
-                  onClick={signOut}
-                  className="cursor-pointer rounded-btn border border-white/40 px-4 py-2 text-sm font-semibold text-white transition-colors duration-200 hover:bg-white hover:text-ink"
-                >
-                  Sign out
-                </button>
+              {!loading && (
+                <div className="flex flex-wrap gap-2">
+                  {me ? (
+                    <GuideTour id="student-area-v1" steps={STUDENT_AREA_TOUR} />
+                  ) : (
+                    <GuideTour id="student-signin-v1" steps={STUDENT_SIGNIN_TOUR} />
+                  )}
+                  {me && (
+                    <button
+                      type="button"
+                      data-tour="student-signout"
+                      onClick={signOut}
+                      className="cursor-pointer rounded-btn border border-white/40 px-4 py-2 text-sm font-semibold text-white transition-colors duration-200 hover:bg-white hover:text-ink"
+                    >
+                      Sign out
+                    </button>
+                  )}
+                </div>
               )}
             </div>
             {me && (
-              <div className="mt-6 flex gap-2">
+              <div data-tour="student-tabs" className="mt-6 flex gap-2">
                 {([["take", "Take a test"], ["results", "My results"]] as const).map(
                   ([key, label]) => (
                     <button
@@ -93,7 +103,7 @@ export default function CbtPage() {
           ) : !me ? (
             <StudentLogin onSignedIn={refresh} />
           ) : tab === "take" ? (
-            <TakeTest me={me} onExpired={() => setMe(null)} />
+            <TakeTest me={me} onExpired={refresh} />
           ) : (
             <MyResults />
           )}
@@ -140,6 +150,7 @@ function StudentLogin({ onSignedIn }: { onSignedIn: () => void }) {
       <label className="mt-6 block text-sm font-semibold" htmlFor="adm">Admission number</label>
       <input
         id="adm"
+        data-tour="student-admission"
         type="text"
         value={admissionNumber}
         onChange={(e) => setAdmissionNumber(e.target.value)}
@@ -149,6 +160,7 @@ function StudentLogin({ onSignedIn }: { onSignedIn: () => void }) {
       <label className="mt-4 block text-sm font-semibold" htmlFor="pin">PIN</label>
       <input
         id="pin"
+        data-tour="student-pin"
         type="password"
         inputMode="numeric"
         value={pin}
@@ -159,6 +171,7 @@ function StudentLogin({ onSignedIn }: { onSignedIn: () => void }) {
       {error && <p className="mt-3 text-sm font-semibold text-brand-red" role="alert">{error}</p>}
       <button
         type="submit"
+        data-tour="student-signin"
         disabled={loading || !admissionNumber || !pin}
         className="mt-5 w-full cursor-pointer rounded-btn bg-brand-red px-6 py-3.5 font-semibold text-white transition-colors duration-200 hover:bg-brand-red-dark disabled:cursor-not-allowed disabled:opacity-50"
       >
@@ -170,27 +183,14 @@ function StudentLogin({ onSignedIn }: { onSignedIn: () => void }) {
 
 function TakeTest({ me, onExpired }: { me: NonNullable<Me>; onExpired: () => void }) {
   const [step, setStep] = useState<"pick" | "test" | "done">("pick");
-  const [exams, setExams] = useState<PublicExam[]>([]);
-  const [examId, setExamId] = useState("");
-  const [loading, setLoading] = useState(true);
+  const invalidate = useInvalidate();
+  const examsQ = useApi<{ exams: PublicExam[] }>("/api/exams?type=class", onExpired);
+  const exams = examsQ.data?.exams ?? [];
+  const loading = examsQ.isPending;
+  const [chosenExam, setExamId] = useState("");
   const [result, setResult] = useState<SubmittedResult | null>(null);
-
-  useEffect(() => {
-    fetch(`/api/exams?type=class`)
-      .then((r) => {
-        if (r.status === 401) {
-          onExpired();
-          return { exams: [] };
-        }
-        return r.json();
-      })
-      .then((d) => {
-        const list: PublicExam[] = d.exams || [];
-        setExams(list);
-        if (list.length === 1) setExamId(list[0].id);
-      })
-      .finally(() => setLoading(false));
-  }, [onExpired]);
+  // With only one test open, it is already chosen.
+  const examId = chosenExam || (exams.length === 1 ? exams[0].id : "");
 
   const exam = exams.find((e) => e.id === examId);
 
@@ -203,6 +203,8 @@ function TakeTest({ me, onExpired }: { me: NonNullable<Me>; onExpired: () => voi
         onFinished={(r) => {
           setResult(r);
           setStep("done");
+          // The new score belongs in My results, and the test may now be closed to them.
+          invalidate("/api/attempts", "/api/exams");
           window.scrollTo({ top: 0 });
         }}
       />
@@ -248,6 +250,7 @@ function TakeTest({ me, onExpired }: { me: NonNullable<Me>; onExpired: () => voi
       ) : (
         <>
           <select
+            data-tour="student-test-picker"
             value={examId}
             onChange={(e) => setExamId(e.target.value)}
             className="mt-3 w-full cursor-pointer rounded-btn border border-smoke bg-white px-4 py-3 text-base outline-none focus:border-brand-navy"
@@ -274,15 +277,9 @@ function TakeTest({ me, onExpired }: { me: NonNullable<Me>; onExpired: () => voi
 }
 
 function MyResults() {
-  const [attempts, setAttempts] = useState<Attempt[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetch("/api/attempts")
-      .then((r) => r.json())
-      .then((d) => setAttempts(d.attempts || []))
-      .finally(() => setLoading(false));
-  }, []);
+  const attemptsQ = useApi<{ attempts: Attempt[] }>("/api/attempts");
+  const attempts = attemptsQ.data?.attempts ?? [];
+  const loading = attemptsQ.isPending;
 
   return (
     <div className="mx-auto max-w-[760px] overflow-x-auto rounded-card border border-smoke bg-white">
