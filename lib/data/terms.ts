@@ -26,12 +26,21 @@ function mapTerm(r: Row): Term {
   };
 }
 
+/**
+ * Every session, newest first. The current session is the current term's
+ * session whenever a term is current, so the two can never disagree, even
+ * if the stored flag was left behind (a term made current before they were
+ * kept in step).
+ */
 export async function listSessions(): Promise<AcademicSession[]> {
-  const { data } = await serviceClient()
-    .from("academic_sessions")
-    .select("*")
-    .order("name", { ascending: false });
-  return (data ?? []).map(mapSession);
+  const supa = serviceClient();
+  const [{ data }, { data: term }] = await Promise.all([
+    supa.from("academic_sessions").select("*").order("name", { ascending: false }),
+    supa.from("terms").select("session_id").eq("is_current", true).maybeSingle(),
+  ]);
+  const sessions = (data ?? []).map(mapSession);
+  const currentId = term?.session_id as string | undefined;
+  return currentId ? sessions.map((s) => ({ ...s, isCurrent: s.id === currentId })) : sessions;
 }
 
 export async function createSession(name: string): Promise<AcademicSession> {

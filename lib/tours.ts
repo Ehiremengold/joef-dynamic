@@ -501,7 +501,7 @@ export const PROMOTION_TOUR: TourStep[] = [
   {
     target: "promo-session",
     title: "1. The new session",
-    text: "The session your students are moving into, e.g. 2026/2027. It's chosen for you: the one after the current session.",
+    text: "The session your students are moving into, e.g. 2026/2027. It's chosen for you: during Third Term it's the next session, and once a new session has started it's that session.",
   },
   {
     target: "promo-class",

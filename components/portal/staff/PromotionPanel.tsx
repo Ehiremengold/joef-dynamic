@@ -5,7 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ApiError, EDITABLE, sendJson, useApi } from "@/lib/client/api";
 import { isAdmin } from "@/lib/roles";
 import { classLabel, defaultTargetSession, nextLevel, sessionStartYear, suggestNextClass } from "@/lib/promotion";
-import type { AcademicSession, Class, Promotion, PromotionCandidate, SignedInStaff } from "@/lib/types";
+import type { AcademicSession, Class, Promotion, PromotionCandidate, SignedInStaff, Term } from "@/lib/types";
 import { useConfirm } from "./useConfirm";
 
 type Choice = "promoted" | "repeated" | "graduated" | "skip";
@@ -30,6 +30,7 @@ export default function PromotionPanel({
   const { confirm, dialog } = useConfirm();
   const client = useQueryClient();
   const sessionsQ = useApi<{ sessions: AcademicSession[] }>("/api/sessions", onUnauthorized);
+  const termsQ = useApi<{ terms: Term[] }>("/api/terms", onUnauthorized);
   const classesQ = useApi<{ classes: Class[] }>("/api/classes", onUnauthorized);
   const [chosenSession, setSessionId] = useState("");
   const [chosenClass, setClassId] = useState("");
@@ -45,7 +46,9 @@ export default function PromotionPanel({
     () => (isAdmin(me.role) ? allClasses : allClasses.filter((c) => c.classTeacherId === me.id)),
     [allClasses, me.id, me.role]
   );
-  const sessionId = chosenSession || defaultTargetSession(sessions)?.id || "";
+  const currentTerm = termsQ.data?.terms.find((t) => t.isCurrent) ?? null;
+  const currentSession = sessions.find((s) => s.isCurrent) ?? null;
+  const sessionId = chosenSession || defaultTargetSession(sessions, currentTerm)?.id || "";
   const classId = chosenClass || myClasses[0]?.id || "";
   const cls = allClasses.find((c) => c.id === classId) ?? null;
   const session = sessions.find((s) => s.id === sessionId) ?? null;
@@ -155,7 +158,7 @@ export default function PromotionPanel({
     }
   }
 
-  if (sessionsQ.isPending || classesQ.isPending) return <p className="text-sm text-graphite">Loading…</p>;
+  if (sessionsQ.isPending || classesQ.isPending || termsQ.isPending) return <p className="text-sm text-graphite">Loading…</p>;
 
   const nextLvl = cls ? nextLevel(cls.level) : null;
 
@@ -227,9 +230,10 @@ export default function PromotionPanel({
               Classes, or choose another class above.
             </p>
           )}
-          {session?.isCurrent && (
+          {session && currentSession && session.name < currentSession.name && (
             <p className="rounded-btn bg-brand-gold/20 px-4 py-3 text-sm text-ink">
-              {session.name} is the current session. Usually you promote into the next one.
+              {session.name} is before the current session ({currentSession.name}). Students are
+              normally moved into the current session or the one after it.
             </p>
           )}
           {(error || promotionQ.error) && (

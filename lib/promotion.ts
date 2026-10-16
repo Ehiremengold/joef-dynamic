@@ -1,4 +1,4 @@
-import { CLASSES, type AcademicSession, type Class, type ClassName } from "./types";
+import { CLASSES, type AcademicSession, type Class, type ClassName, type Term } from "./types";
 
 /** The level after this one, or null for SS3 (whose students graduate). */
 export function nextLevel(level: ClassName): ClassName | null {
@@ -23,14 +23,17 @@ export function suggestNextClass(from: Class, classes: Class[]): Class | null {
 }
 
 /**
- * The session promotions move into by default: the one after the current
- * session (names like "2025/2026" sort in time order), else the current one.
+ * The session promotions move into by default. In Third Term the school is
+ * finishing a session, so it's the next one (names like "2025/2026" sort in
+ * time order). Otherwise the new session has already begun and students are
+ * being placed into it: the current session.
  */
-export function defaultTargetSession(sessions: AcademicSession[]): AcademicSession | null {
+export function defaultTargetSession(sessions: AcademicSession[], currentTerm: Term | null): AcademicSession | null {
   const sorted = [...sessions].sort((a, b) => a.name.localeCompare(b.name));
   const current = sorted.findIndex((s) => s.isCurrent);
   if (current === -1) return sorted[sorted.length - 1] ?? null;
-  return sorted[current + 1] ?? sorted[current];
+  if (currentTerm?.name === "Third Term") return sorted[current + 1] ?? sorted[current];
+  return sorted[current];
 }
 
 /** "2026/2027" → "2026", to compare against a student's entry year. */
