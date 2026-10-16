@@ -107,35 +107,103 @@ export async function listStudentsPage(
   ).then((result) => ({ ...result, periodMatch }));
 }
 
-/** Create a student; returns the record plus the plaintext PIN (shown once). */
+const ADMISSION_PREFIX = "JDCL-";
+
+/**
+ * Tidy a typed admission number: trimmed, upper case, no spaces around
+ * dashes or slashes. The school's own numbers are padded to five digits, so
+ * "jdcl - 1026" becomes "JDCL-01026".
+ */
+export function normaliseAdmissionNumber(raw: string): string {
+  const s = raw.trim().toUpperCase().replace(/\s*([-/])\s*/g, "$1").replace(/\s+/g, " ");
+  const m = s.match(/^JDCL-?(\d{1,5})$/);
+  return m ? `${ADMISSION_PREFIX}${m[1].padStart(5, "0")}` : s;
+}
+
+/** The number after the highest JDCL-NNNNN in use. */
+export async function nextAdmissionNumber(): Promise<string> {
+  const { data, error } = await serviceClient()
+    .from("students")
+    .select("admission_number")
+    .like("admission_number", `${ADMISSION_PREFIX}_____`)
+    .order("admission_number", { ascending: false })
+    .limit(1);
+  if (error) throw new Error(error.message);
+  const last = Number(String(data?.[0]?.admission_number ?? "").slice(ADMISSION_PREFIX.length)) || 0;
+  return `${ADMISSION_PREFIX}${String(last + 1).padStart(5, "0")}`;
+}
+
+const nameWords = (s: string) => s.toLowerCase().replace(/[^a-z]+/g, " ").trim().split(" ").filter((w) => w.length >= 3);
+
+/**
+ * Students whose name shares at least two words with this one (or all of
+ * it, for a one- or two-word name), so "Baniru Jason Darasimi" finds
+ * "Banire Jason Darasimi". Used to warn before adding someone twice.
+ */
+export async function findSimilarStudents(fullName: string): Promise<Student[]> {
+  const words = new Set(nameWords(fullName));
+  if (words.size === 0) return [];
+  const need = Math.min(2, words.size);
+  const supa = serviceClient();
+  const matches: Row[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supa
+      .from("students")
+      .select("*, classes(level, arm, campuses(name))")
+      .order("id")
+      .range(from, from + 999);
+    if (error) throw new Error(error.message);
+    for (const r of data ?? []) {
+      const shared = new Set(nameWords(r.full_name as string).filter((w) => words.has(w))).size;
+      if (shared >= need) matches.push(r);
+    }
+    if (!data || data.length < 1000) break;
+  }
+  return matches.slice(0, 5).map(mapStudent);
+}
+
+/**
+ * Create a student in a class; returns the record plus the plaintext PIN
+ * (shown once). With no admission number, the next JDCL number is used.
+ */
 export async function createStudent(input: {
-  admissionNumber: string;
+  admissionNumber: string | null;
   fullName: string;
+  classId: string;
   className: ClassName;
   entryYear: string;
   createdBy: string;
 }): Promise<{ student: Student; pin: string }> {
   const pin = generatePin(6);
   const pin_hash = await hashPin(pin);
-  const { data, error } = await serviceClient()
-    .from("students")
-    .insert({
-      admission_number: input.admissionNumber,
-      full_name: input.fullName,
-      class_name: input.className,
-      entry_year: input.entryYear,
-      pin_hash,
-      created_by: input.createdBy,
-    })
-    .select("*")
-    .single();
-  if (error) {
-    if ((error as { code?: string }).code === "23505") {
-      throw new Error("That admission number is already in use");
-    }
-    throw new Error(error.message);
+  // Two people adding at once can be handed the same next number; the
+  // unique index refuses the second, so take the one after and try again.
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const admissionNumber = input.admissionNumber ?? (await nextAdmissionNumber());
+    const { data, error } = await serviceClient()
+      .from("students")
+      .insert({
+        admission_number: admissionNumber,
+        full_name: input.fullName,
+        class_name: input.className,
+        class_id: input.classId,
+        entry_year: input.entryYear,
+        pin_hash,
+        created_by: input.createdBy,
+      })
+      .select("*")
+      .single();
+    if (!error) return { student: mapStudent(data), pin };
+    if ((error as { code?: string }).code !== "23505") throw new Error(error.message);
+    if (input.admissionNumber) throw new Error(`Admission number ${admissionNumber} is already in use`);
   }
-  return { student: mapStudent(data), pin };
+  throw new Error("Could not find a free admission number. Try again.");
+}
+
+/** Who has this admission number already, if anyone. */
+export async function getStudentByAdmissionNumber(admissionNumber: string): Promise<Student | null> {
+  const { data } = await serviceClient().from("students").select("*").eq("admission_number", admissionNumber).maybeSingle();
+  return data ? mapStudent(data) : null;
 }
 
 /** Reset a student's PIN; returns the new plaintext PIN. */

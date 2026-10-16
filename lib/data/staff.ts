@@ -1,4 +1,5 @@
 import "server-only";
+import { randomInt } from "node:crypto";
 import { serviceClient } from "@/lib/supabase/server";
 import type { Staff, StaffRole } from "@/lib/types";
 
@@ -27,6 +28,23 @@ export async function listStaff(): Promise<Staff[]> {
  * Create a staff member: makes the Supabase Auth user (email confirmed) and the
  * linked staff profile. Returns the profile. Rolls back the auth user on failure.
  */
+// No 0/O, 1/l/I: a password read off a screen or a slip of paper has to be typed back.
+const PASSWORD_ALPHABET = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+/** A random password like "k7Rm-Qx4p-Z9wa": 12 characters, easy to read out, hard to guess. */
+export function generatePassword(): string {
+  const chars = Array.from({ length: 12 }, () => PASSWORD_ALPHABET[randomInt(PASSWORD_ALPHABET.length)]);
+  return [chars.slice(0, 4), chars.slice(4, 8), chars.slice(8)].map((g) => g.join("")).join("-");
+}
+
+/** Give a staff member a new sign-in password; returns it in plain text, to be shown once. */
+export async function resetStaffPassword(id: string): Promise<string> {
+  const password = generatePassword();
+  const { error } = await serviceClient().auth.admin.updateUserById(id, { password });
+  if (error) throw new Error(error.message);
+  return password;
+}
+
 export async function createStaff(input: {
   fullName: string;
   email: string;

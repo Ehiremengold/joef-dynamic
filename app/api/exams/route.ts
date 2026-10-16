@@ -6,6 +6,7 @@ import { CLASSES, type ExamType } from "@/lib/types";
 import {
   createExam,
   isOpen,
+  isUpcoming,
   listExams,
   toPublicExam,
 } from "@/lib/data/exams";
@@ -13,8 +14,9 @@ import {
 /**
  * GET /api/exams?type=&className=
  * - Staff: full exams (incl. answers, inactive) for management.
- * - Taker (student/candidate session): only OPEN exams, answers stripped,
- *   scoped to what they're allowed to sit.
+ * - Taker (student/candidate session): OPEN exams, answers stripped, scoped
+ *   to what they're allowed to sit; plus `upcoming`, scheduled ones that
+ *   haven't opened yet (title and times only, no questions).
  */
 export async function GET(req: NextRequest) {
   try {
@@ -40,8 +42,21 @@ export async function GET(req: NextRequest) {
     } else {
       exams = await listExams({ type: "class", className: taker.className, activeOnly: true });
     }
-    const open = exams.filter((e) => isOpen(e) && e.questions.length > 0);
-    return NextResponse.json({ exams: open.map(toPublicExam) });
+    const ready = exams.filter((e) => e.questions.length > 0);
+    const open = ready.filter(isOpen);
+    // Scheduled tests they'll sit later: when, and how long. Never the questions.
+    const upcoming = ready
+      .filter(isUpcoming)
+      .sort((a, b) => Date.parse(a.opensAt!) - Date.parse(b.opensAt!))
+      .map((e) => ({
+        id: e.id,
+        title: e.title,
+        durationMins: e.durationMins,
+        opensAt: e.opensAt,
+        closesAt: e.closesAt,
+        questionCount: e.questions.length,
+      }));
+    return NextResponse.json({ exams: open.map(toPublicExam), upcoming });
   } catch (e) {
     return errorResponse(e);
   }

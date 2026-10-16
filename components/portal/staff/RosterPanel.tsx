@@ -8,7 +8,6 @@ import Pagination from "./Pagination";
 import { usePagedList } from "./usePagedList";
 import { useConfirm } from "./useConfirm";
 
-const YEARS = ["2024", "2025", "2026", "2027"];
 
 // Tighter than the other staff tables, because this one has the most columns.
 // The outer cells keep a 16px inset from the card's rounded corners.
@@ -143,6 +142,9 @@ export default function RosterPanel({
       {/* The roster is A–Z, so a new student rarely lands on the page in view:
           search for them, which puts them on screen under their PIN. */}
       <AddStudent
+        campuses={campuses}
+        classes={classes}
+        sessions={sessions}
         onAdded={(fullName) => {
           setName(fullName);
           reload();
@@ -487,42 +489,88 @@ function SubjectExemptions({
   );
 }
 
+type Similar = { admissionNumber: string; fullName: string; className: string; active: boolean };
+
 function AddStudent({
+  campuses,
+  classes,
+  sessions,
   onAdded,
   onUnauthorized,
   onPin,
 }: {
+  campuses: Campus[];
+  classes: Class[];
+  sessions: AcademicSession[];
   onAdded: (fullName: string) => void;
   onUnauthorized: () => void;
   onPin: (n: { text: string; pin: string }) => void;
 }) {
+  const { confirm, dialog } = useConfirm();
+  const invalidate = useInvalidate();
+  const next = useApi<{ admissionNumber: string }>("/api/students/next-number", onUnauthorized).data?.admissionNumber;
   const [admissionNumber, setAdmissionNumber] = useState("");
   const [fullName, setFullName] = useState("");
-  const [className, setClassName] = useState("JS1");
-  const [entryYear, setEntryYear] = useState(String(new Date().getFullYear()));
+  const [campusId, setCampusId] = useState("");
+  const [classId, setClassId] = useState("");
+  const [chosenYear, setEntryYear] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  // New students join the current session: its first year, unless changed.
+  const currentYear = sessions.find((x) => x.isCurrent)?.name.slice(0, 4) ?? String(new Date().getFullYear());
+  const entryYear = chosenYear || currentYear;
+  const years = [...new Set([...entryYears(sessions), currentYear])].sort().reverse();
+  const campusClasses = classes.filter((c) => c.campusId === campusId);
+
+  async function add(confirmDuplicate: boolean): Promise<void> {
+    const res = await fetch("/api/students", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ admissionNumber, fullName, classId, entryYear, confirmDuplicate }),
+    });
+    if (res.status === 401) return onUnauthorized();
+    const d = await res.json();
+    if (res.status === 409 && d.similar) {
+      const list: Similar[] = d.similar;
+      const ok = await confirm({
+        title: "Is this student already in the portal?",
+        message: (
+          <>
+            <p>These students have a similar name:</p>
+            <ul className="mt-2 list-disc pl-5">
+              {list.map((x) => (
+                <li key={x.admissionNumber}>
+                  {x.fullName} ({x.admissionNumber}, {x.className}
+                  {x.active ? "" : ", inactive"})
+                </li>
+              ))}
+            </ul>
+            <p className="mt-2">
+              If it&rsquo;s the same child, don&rsquo;t add them again: put them in their new class from the roster, or
+              promote them from the Promotion tab.
+            </p>
+          </>
+        ),
+        confirmLabel: "Add as a new student",
+      });
+      if (ok) return add(true);
+      return;
+    }
+    if (!res.ok) throw new Error(d.error || "Could not add student");
+    onPin({ text: `${d.student.fullName} added. Admission ${d.student.admissionNumber}, PIN:`, pin: d.pin });
+    setAdmissionNumber("");
+    setFullName("");
+    invalidate("/api/students/next-number");
+    onAdded(d.student.fullName);
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError("");
     try {
-      const res = await fetch("/api/students", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ admissionNumber, fullName, className, entryYear }),
-      });
-      if (res.status === 401) return onUnauthorized();
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.error || "Could not add student");
-      onPin({
-        text: `${fullName} added. Admission ${admissionNumber}, PIN:`,
-        pin: d.pin,
-      });
-      setAdmissionNumber("");
-      setFullName("");
-      onAdded(d.student.fullName);
+      await add(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not add student");
     } finally {
@@ -530,47 +578,78 @@ function AddStudent({
     }
   }
 
+  const FIELD = "mt-2 w-full rounded-btn border border-smoke px-3 py-2.5 text-sm outline-none focus:border-brand-navy";
+
   return (
     <form data-tour="students-add" onSubmit={submit} className="h-fit rounded-card border border-smoke bg-white p-6">
+      {dialog}
       <h2 className="font-display text-xl font-bold tracking-tight">Add student</h2>
       <p className="mt-2 text-[13px] leading-relaxed text-pewter">
         A 6-digit PIN is generated. Give the admission number + PIN to the
         student, they use it to sign in and take class tests.
       </p>
 
-      <label className="mt-5 block text-sm font-semibold" htmlFor="s-adm">Admission number</label>
-      <input
-        id="s-adm"
-        type="text"
-        value={admissionNumber}
-        onChange={(e) => setAdmissionNumber(e.target.value)}
-        placeholder="e.g. JDC/2026/041"
-        className="mt-2 w-full rounded-btn border border-smoke px-3 py-2.5 text-sm outline-none focus:border-brand-navy"
-      />
-
-      <label className="mt-4 block text-sm font-semibold" htmlFor="s-name">Full name</label>
+      <label className="mt-5 block text-sm font-semibold" htmlFor="s-name">Full name</label>
       <input
         id="s-name"
         type="text"
         value={fullName}
         onChange={(e) => setFullName(e.target.value)}
         placeholder="e.g. Chidera Okafor"
-        className="mt-2 w-full rounded-btn border border-smoke px-3 py-2.5 text-sm outline-none focus:border-brand-navy"
+        className={FIELD}
       />
 
       <div className="mt-4 grid grid-cols-2 gap-3">
         <div>
+          <label className="block text-sm font-semibold" htmlFor="s-campus">Campus</label>
+          <select
+            id="s-campus"
+            value={campusId}
+            onChange={(e) => {
+              setCampusId(e.target.value);
+              setClassId("");
+            }}
+            className={`${FIELD} cursor-pointer bg-white`}
+          >
+            <option value="">Choose…</option>
+            {campuses.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+        </div>
+        <div>
           <label className="block text-sm font-semibold" htmlFor="s-class">Class</label>
           <select
             id="s-class"
-            value={className}
-            onChange={(e) => setClassName(e.target.value)}
-            className="mt-2 w-full cursor-pointer rounded-btn border border-smoke bg-white px-3 py-2.5 text-sm outline-none focus:border-brand-navy"
+            value={classId}
+            disabled={!campusId}
+            onChange={(e) => setClassId(e.target.value)}
+            className={`${FIELD} cursor-pointer bg-white disabled:cursor-not-allowed disabled:bg-mist`}
           >
-            {CLASSES.map((c) => (
-              <option key={c} value={c}>{c}</option>
+            <option value="">{campusId ? "Choose…" : "Campus first"}</option>
+            {campusClasses.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.level}
+                {c.arm ? ` ${c.arm}` : ""}
+              </option>
             ))}
           </select>
+        </div>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-sm font-semibold" htmlFor="s-adm">
+            Admission no. <span className="font-normal text-pewter">(optional)</span>
+          </label>
+          <input
+            id="s-adm"
+            type="text"
+            value={admissionNumber}
+            onChange={(e) => setAdmissionNumber(e.target.value)}
+            placeholder={next ?? "Next number"}
+            className={FIELD}
+          />
         </div>
         <div>
           <label className="block text-sm font-semibold" htmlFor="s-year">Entry year</label>
@@ -578,20 +657,23 @@ function AddStudent({
             id="s-year"
             value={entryYear}
             onChange={(e) => setEntryYear(e.target.value)}
-            className="mt-2 w-full cursor-pointer rounded-btn border border-smoke bg-white px-3 py-2.5 text-sm outline-none focus:border-brand-navy"
+            className={`${FIELD} cursor-pointer bg-white`}
           >
-            {YEARS.map((y) => (
+            {years.map((y) => (
               <option key={y} value={y}>{y}</option>
             ))}
           </select>
         </div>
       </div>
+      <p className="mt-1.5 text-[12px] text-pewter">
+        {admissionNumber.trim() ? "Typed numbers are tidied, e.g. “jdcl - 1070” becomes JDCL-01070." : `Leave empty to use the next number${next ? `, ${next}` : ""}.`}
+      </p>
 
       {error && <p className="mt-3 text-sm font-semibold text-brand-red" role="alert">{error}</p>}
 
       <button
         type="submit"
-        disabled={busy || !admissionNumber.trim() || !fullName.trim()}
+        disabled={busy || !fullName.trim() || !classId}
         className="mt-5 w-full cursor-pointer rounded-btn bg-brand-red px-6 py-3 font-semibold text-white transition-colors duration-200 hover:bg-brand-red-dark disabled:cursor-not-allowed disabled:opacity-50"
       >
         {busy ? "Adding…" : "Add student"}

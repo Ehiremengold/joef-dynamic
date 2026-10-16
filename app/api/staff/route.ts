@@ -6,8 +6,7 @@ import {
   createStaff,
   getStaffById,
   listStaff,
-  updateStaff,
-} from "@/lib/data/staff";
+  updateStaff, resetStaffPassword } from "@/lib/data/staff";
 import { isAdmin, isSuperAdmin } from "@/lib/roles";
 import type { StaffRole } from "@/lib/types";
 
@@ -61,6 +60,8 @@ export async function POST(req: NextRequest) {
  * PATCH /api/staff — admin updates a staff account: { id, fullName?, role?, active? }.
  * Partial — only the fields present are touched. Only a super admin can
  * change a super admin's account, or make someone a super admin.
+ * { id, action: "reset-password" } → { password }: a new generated password,
+ * shown once (not for your own account).
  */
 export async function PATCH(req: NextRequest) {
   try {
@@ -78,6 +79,17 @@ export async function PATCH(req: NextRequest) {
 
     if (!isSuperAdmin(admin.role) && (isSuperAdmin(target.role) || body.role === "super_admin")) {
       return NextResponse.json({ error: "Only a super admin can change a super admin's account" }, { status: 403 });
+    }
+
+    if (body.action === "reset-password") {
+      if (id === admin.id) {
+        return NextResponse.json(
+          { error: "You can't reset your own password here. Ask another admin to do it" },
+          { status: 400 }
+        );
+      }
+      const password = await resetStaffPassword(id);
+      return NextResponse.json({ password });
     }
 
     const patch: { fullName?: string; role?: StaffRole; active?: boolean } = {};

@@ -4,13 +4,15 @@ import { requireStaff } from "@/lib/auth/staff";
 import {
   assignStudentClass,
   createStudent,
+  findSimilarStudents,
+  getStudentByAdmissionNumber,
+  normaliseAdmissionNumber,
   listStudentsPage,
   resetStudentPin,
   setStudentActive,
   unassignStudentClass,
 } from "@/lib/data/students";
 import { getClassById } from "@/lib/data/classes";
-import { CLASSES } from "@/lib/types";
 
 /**
  * GET /api/students — staff list/search the roster, a page at a time (?page=).
@@ -43,30 +45,59 @@ export async function GET(req: NextRequest) {
   }
 }
 
-/** POST /api/students — staff add a student. Returns the one-time PIN. */
+/**
+ * POST /api/students — staff add a student. Returns the one-time PIN.
+ * { fullName, classId, entryYear, admissionNumber?, confirmDuplicate? }
+ * No admission number → the next JDCL number. A name like an existing
+ * student's answers 409 with { similar } unless confirmDuplicate is true.
+ */
 export async function POST(req: NextRequest) {
   try {
     const staff = await requireStaff();
     const body = await req.json().catch(() => null);
-    const admissionNumber = String(body?.admissionNumber || "").trim();
-    const fullName = String(body?.fullName || "").trim();
-    const className = body?.className;
+    const typedNumber = normaliseAdmissionNumber(String(body?.admissionNumber || ""));
+    const fullName = String(body?.fullName || "").trim().replace(/\s+/g, " ");
+    const classId = String(body?.classId || "");
     const entryYear = String(body?.entryYear || new Date().getFullYear()).trim();
 
-    if (admissionNumber.length < 2) {
-      return NextResponse.json({ error: "Enter an admission number" }, { status: 400 });
-    }
     if (fullName.length < 2) {
       return NextResponse.json({ error: "Enter the student's name" }, { status: 400 });
     }
-    if (!CLASSES.includes(className)) {
-      return NextResponse.json({ error: "Choose a valid class" }, { status: 400 });
+    if (!/^\d{4}$/.test(entryYear)) {
+      return NextResponse.json({ error: "Choose an entry year" }, { status: 400 });
+    }
+    const [cls, taken, similar] = await Promise.all([
+      classId ? getClassById(classId) : null,
+      typedNumber ? getStudentByAdmissionNumber(typedNumber) : null,
+      body?.confirmDuplicate ? [] : findSimilarStudents(fullName),
+    ]);
+    if (!cls) {
+      return NextResponse.json({ error: "Choose the student's campus and class" }, { status: 400 });
+    }
+    if (typedNumber && typedNumber.length < 2) {
+      return NextResponse.json({ error: "Enter a full admission number, or leave it empty" }, { status: 400 });
+    }
+    if (taken) {
+      return NextResponse.json(
+        { error: `Admission number ${typedNumber} already belongs to ${taken.fullName}` },
+        { status: 400 }
+      );
+    }
+    if (similar.length > 0) {
+      return NextResponse.json(
+        {
+          error: "A student with a similar name is already in the portal",
+          similar: similar.map((s) => ({ admissionNumber: s.admissionNumber, fullName: s.fullName, className: s.className, active: s.active })),
+        },
+        { status: 409 }
+      );
     }
 
     const { student, pin } = await createStudent({
-      admissionNumber,
+      admissionNumber: typedNumber || null,
       fullName,
-      className,
+      classId: cls.id,
+      className: cls.level,
       entryYear,
       createdBy: staff.id,
     });

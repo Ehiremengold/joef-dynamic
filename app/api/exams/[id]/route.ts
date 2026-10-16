@@ -43,7 +43,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 }
 
 /**
- * PUT /api/exams/:id — Partial: { title?, durationMins?, active?, questions? }.
+ * PUT /api/exams/:id — Partial: { title?, durationMins?, active?, opensAt?, closesAt?, questions? }.
  * Questions are validated and replaced wholesale; existing ones are sent back
  * with their id. A teacher can only change their own exams. An admin can
  * change anyone's, except that removing questions from someone else's exam
@@ -103,7 +103,27 @@ export async function PUT(req: NextRequest, { params }: Params) {
       await replaceQuestions(id, cleaned);
     }
 
+    // The schedule: both times are optional; null clears one.
+    const time = (v: unknown): string | null | undefined | false => {
+      if (v === undefined) return undefined;
+      if (v === null || v === "") return null;
+      const t = Date.parse(String(v));
+      return Number.isNaN(t) ? false : new Date(t).toISOString();
+    };
+    const opensAt = time(body.opensAt);
+    const closesAt = time(body.closesAt);
+    if (opensAt === false || closesAt === false) {
+      return NextResponse.json({ error: "Enter a valid date and time" }, { status: 400 });
+    }
+    const effectiveOpens = opensAt === undefined ? exam.opensAt : opensAt;
+    const effectiveCloses = closesAt === undefined ? exam.closesAt : closesAt;
+    if (effectiveOpens && effectiveCloses && Date.parse(effectiveCloses) <= Date.parse(effectiveOpens)) {
+      return NextResponse.json({ error: "The closing time must be after the opening time" }, { status: 400 });
+    }
+
     await updateExamMeta(id, {
+      opensAt,
+      closesAt,
       title: typeof body.title === "string" && body.title.trim() ? body.title.trim() : undefined,
       durationMins:
         body.durationMins !== undefined

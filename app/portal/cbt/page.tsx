@@ -4,12 +4,16 @@ import Link from "next/link";
 import { useCallback, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { apiKey, SIGNED_IN, useApi, useInvalidate } from "@/lib/client/api";
+import { formatExamTime } from "@/lib/lagosTime";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import TestRunner, { type SubmittedResult } from "@/components/portal/TestRunner";
 import GuideTour from "@/components/portal/GuideTour";
 import { STUDENT_AREA_TOUR, STUDENT_SIGNIN_TOUR } from "@/lib/tours";
 import type { Attempt, ClassName, PublicExam } from "@/lib/types";
+
+/** A test with a date and time that hasn't arrived yet. */
+type Upcoming = { id: string; title: string; durationMins: number; opensAt: string; questionCount: number };
 
 type Me = { fullName: string; className: ClassName; admissionNumber?: string } | null;
 
@@ -184,8 +188,12 @@ function StudentLogin({ onSignedIn }: { onSignedIn: () => void }) {
 function TakeTest({ me, onExpired }: { me: NonNullable<Me>; onExpired: () => void }) {
   const [step, setStep] = useState<"pick" | "test" | "done">("pick");
   const invalidate = useInvalidate();
-  const examsQ = useApi<{ exams: PublicExam[] }>("/api/exams?type=class", onExpired);
+  const examsQ = useApi<{ exams: PublicExam[]; upcoming?: Upcoming[] }>("/api/exams?type=class", onExpired, {
+    // A test with a date and time should appear by itself when the time comes.
+    refetchInterval: 60_000,
+  });
   const exams = examsQ.data?.exams ?? [];
+  const upcoming = examsQ.data?.upcoming ?? [];
   const loading = examsQ.isPending;
   const [chosenExam, setExamId] = useState("");
   const [result, setResult] = useState<SubmittedResult | null>(null);
@@ -244,8 +252,8 @@ function TakeTest({ me, onExpired }: { me: NonNullable<Me>; onExpired: () => voi
         <p className="mt-3 text-sm text-graphite">Loading tests…</p>
       ) : exams.length === 0 ? (
         <p className="mt-3 rounded-btn bg-mist px-4 py-3 text-sm text-graphite">
-          No test is open for {me.className} right now. Check back when your
-          teacher opens one.
+          No test is open for {me.className} right now.{" "}
+          {upcoming.length ? "Your next test is listed below." : "Check back when your teacher opens one."}
         </p>
       ) : (
         <>
@@ -258,7 +266,8 @@ function TakeTest({ me, onExpired }: { me: NonNullable<Me>; onExpired: () => voi
             <option value="">Select a test…</option>
             {exams.map((e) => (
               <option key={e.id} value={e.id}>
-                {e.title} · {e.questions.length} questions · {e.durationMins} mins
+                {e.title}
+                {e.opensAt ? ` · ${formatExamTime(e.opensAt)}` : ""} · {e.questions.length} question{e.questions.length === 1 ? "" : "s"} · {e.durationMins} mins
               </option>
             ))}
           </select>
@@ -271,6 +280,25 @@ function TakeTest({ me, onExpired }: { me: NonNullable<Me>; onExpired: () => voi
             Start test
           </button>
         </>
+      )}
+
+      {upcoming.length > 0 && (
+        <div data-tour="student-upcoming" className="mt-8 border-t border-smoke pt-5">
+          <h3 className="font-display text-base font-bold tracking-tight">Coming up</h3>
+          <ul className="mt-3 space-y-2">
+            {upcoming.map((u) => (
+              <li key={u.id} className="rounded-btn bg-mist px-4 py-3">
+                <p className="text-sm font-semibold">{u.title}</p>
+                <p className="mt-0.5 text-[13px] text-graphite">
+                  {formatExamTime(u.opensAt)} · {u.durationMins} mins · {u.questionCount} question{u.questionCount === 1 ? "" : "s"}
+                </p>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-[12px] text-pewter">
+            Lagos time. The Start button appears here when the time comes.
+          </p>
+        </div>
       )}
     </div>
   );

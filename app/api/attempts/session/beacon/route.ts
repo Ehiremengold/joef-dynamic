@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getTakerSession } from "@/lib/auth/session";
-import { getExam, isOpen } from "@/lib/data/exams";
+import { getExam } from "@/lib/data/exams";
 import { getSession, isExpired, saveAnswers } from "@/lib/data/attemptSessions";
 import { canSit } from "@/lib/data/submit";
 
@@ -23,7 +23,9 @@ export async function POST(req: NextRequest) {
     }
 
     const exam = await getExam(body.examId);
-    if (!exam || !isOpen(exam) || !canSit(exam, taker)) {
+    // Only ever saves into a sitting already under way (below), so the
+    // scheduled window doesn't matter here; a switched-off exam does.
+    if (!exam || !exam.active || !canSit(exam, taker)) {
       return new NextResponse(null, { status: 204 });
     }
 

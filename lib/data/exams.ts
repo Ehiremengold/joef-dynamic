@@ -44,6 +44,11 @@ export function toPublicExam(exam: Exam): PublicExam {
   };
 }
 
+/** Not yet open, but switched on and scheduled: students see it coming up. */
+export function isUpcoming(exam: Exam): boolean {
+  return exam.active && exam.opensAt !== null && Date.now() < Date.parse(exam.opensAt);
+}
+
 /** Is the exam open right now (active + within any scheduled window)? */
 export function isOpen(exam: Exam): boolean {
   if (!exam.active) return false;
@@ -136,12 +141,21 @@ export async function createExam(input: {
 
 export async function updateExamMeta(
   id: string,
-  patch: { title?: string; durationMins?: number; active?: boolean }
+  patch: {
+    title?: string;
+    durationMins?: number;
+    active?: boolean;
+    /** ISO times; null clears that side of the schedule. */
+    opensAt?: string | null;
+    closesAt?: string | null;
+  }
 ): Promise<void> {
   const row: Row = {};
   if (patch.title !== undefined) row.title = patch.title;
   if (patch.durationMins !== undefined) row.duration_mins = patch.durationMins;
   if (patch.active !== undefined) row.active = patch.active;
+  if (patch.opensAt !== undefined) row.opens_at = patch.opensAt;
+  if (patch.closesAt !== undefined) row.closes_at = patch.closesAt;
   if (Object.keys(row).length === 0) return;
   const { error } = await serviceClient().from("exams").update(row).eq("id", id);
   if (error) throw new Error(error.message);

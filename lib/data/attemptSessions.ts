@@ -26,11 +26,12 @@ function mapSession(r: Row): AttemptSession {
 
 /** Wall-clock end of a sitting, in epoch ms. The clock never pauses. */
 export function deadlineMs(session: AttemptSession, exam: Exam): number {
-  return (
-    Date.parse(session.startedAt) +
-    exam.durationMins * 60_000 +
-    session.extraSeconds * 1000
-  );
+  const byDuration = Date.parse(session.startedAt) + exam.durationMins * 60_000 + session.extraSeconds * 1000;
+  // A scheduled exam ends for everyone at its closing time: someone who
+  // started late gets less time, not a sitting that runs past the close.
+  // Extra time a teacher granted still counts on top.
+  if (!exam.closesAt) return byDuration;
+  return Math.min(byDuration, Date.parse(exam.closesAt) + session.extraSeconds * 1000);
 }
 
 /** Whole seconds left, floored at zero. */

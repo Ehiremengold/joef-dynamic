@@ -167,7 +167,7 @@ export default function EntrancePage() {
                   <option value="">Select a test…</option>
                   {exams.map((e) => (
                     <option key={e.id} value={e.id}>
-                      {e.title} · {e.questions.length} questions · {e.durationMins} mins
+                      {e.title} · {e.questions.length} question{e.questions.length === 1 ? "" : "s"} · {e.durationMins} mins
                     </option>
                   ))}
                 </select>

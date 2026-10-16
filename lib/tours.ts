@@ -100,6 +100,11 @@ export const STUDENT_AREA_TOUR: TourStep[] = [
     text: "Pick a test from the list. It shows how many questions it has and how many minutes you get. Then press Start test.",
   },
   {
+    target: "student-upcoming",
+    title: "Coming up",
+    text: "Tests your teachers have scheduled, with the date and time (Lagos time). When the time comes, the test moves up to the list above and you can start it.",
+  },
+  {
     title: "While you're in a test",
     text: "The clock in the top corner counts down. When it reaches zero your test is submitted automatically. Every answer saves as you go, so if the power or network goes, sign in again and you'll carry on where you stopped. Press “Submit test” at the bottom when you have finished.",
   },
@@ -123,7 +128,7 @@ export const STAFF_SIGNIN_TOUR: TourStep[] = [
   {
     target: "staff-password",
     title: "Your password",
-    text: "Forgotten it? Ask an administrator. They can set a new temporary password for you from Staff accounts.",
+    text: "Forgotten it? Ask an administrator. They can give you a new password from Staff accounts.",
   },
 ];
 
@@ -257,6 +262,11 @@ function examsTour(role: StaffRole): TourStep[] {
       text: "Opens the question list. Choose “Paste questions” to paste a whole set from Word at once: end every question with an “Answer: B” line, check the preview, then press Add. Or choose “Add one question” and tick the correct option. The correct answer shows in green, and each question has Edit and Remove.",
     },
     {
+      target: "exam-schedule",
+      title: "Date & time",
+      text: "Set when the exam takes place, e.g. 12 Oct 2026 · 10:00 AM (Lagos time). Once the exam is switched on, students see it under “Coming up” with that date and time, and the Start button appears by itself when it arrives. Without a date and time, the Open switch alone decides.",
+    },
+    {
       target: "exam-sittings",
       title: "Sittings",
       text: "Who is taking the test right now, with their time left and how many they've answered. If someone lost time to a power cut, give them +5 or +10 minutes. Below that is everyone who has finished, with their score. The exam's owner can press “Allow retake”, which deletes that score so the student can sit it again.",
@@ -316,7 +326,7 @@ const STUDENTS_TOUR: TourStep[] = [
   {
     target: "students-add",
     title: "Add a student",
-    text: "Enter the admission number, full name, class level and entry year, then press Add student. A 6-digit PIN is made for them and shown once at the top of the roster. Write it down and give it to the student with their admission number.",
+    text: "Enter their full name, then choose the campus and class. The admission number is optional: leave it empty and the next JDCL number is used. If the name looks like a student already in the portal, you're asked first, so nobody is added twice (a returning student is promoted, not added). A 6-digit PIN is made and shown once at the top of the roster. Give it to the student with their admission number.",
   },
   {
     target: "students-search",
@@ -603,6 +613,11 @@ function teamTour(role: StaffRole): TourStep[] {
       target: "team-rename",
       title: "Edit name",
       text: "Fix a misspelt name. Report cards they sign from now on use the new name. Ones already signed keep the name they were signed with.",
+    },
+    {
+      target: "team-password",
+      title: "Reset password",
+      text: "For someone who has forgotten their password. The portal makes a new one and shows it to you once, with a Copy button. Give it to them privately. Their old password stops working straight away.",
     },
     {
       target: "team-active",

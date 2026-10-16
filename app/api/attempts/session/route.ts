@@ -4,6 +4,7 @@ import { getTakerSession } from "@/lib/auth/session";
 import { getExam, isOpen } from "@/lib/data/exams";
 import { hasAttempt } from "@/lib/data/attempts";
 import {
+  getSession,
   isExpired,
   saveAnswers,
   secondsLeft,
@@ -35,7 +36,10 @@ async function resolve(req: NextRequest): Promise<
     return { error: NextResponse.json({ error: "Invalid request" }, { status: 400 }) };
   }
   const exam = await getExam(examId);
-  if (!exam || !isOpen(exam) || exam.questions.length === 0) {
+  // Switched off (or emptied) means stop. Whether it is inside its scheduled
+  // window is checked by each action: starting needs it open, carrying on
+  // with a sitting already under way doesn't.
+  if (!exam || !exam.active || exam.questions.length === 0) {
     return { error: NextResponse.json({ error: "Exam not available" }, { status: 404 }) };
   }
   if (!canSit(exam, taker)) {
@@ -60,14 +64,19 @@ export async function POST(req: NextRequest) {
     if ("error" in r) return r.error;
     const { taker, exam } = r;
 
-    if (await hasAttempt(exam.id, taker)) {
+    const [taken, existing] = await Promise.all([hasAttempt(exam.id, taker), getSession(exam.id, taker)]);
+    if (taken) {
       return NextResponse.json(
         { error: "You have already taken this test" },
         { status: 409 }
       );
     }
+    // A new sitting only while the exam is open; one already started resumes.
+    if (!existing && !isOpen(exam)) {
+      return NextResponse.json({ error: "This test isn't open right now" }, { status: 404 });
+    }
 
-    const session = await startOrResume(exam, taker);
+    const session = existing ?? (await startOrResume(exam, taker));
 
     if (isExpired(session, exam)) {
       const attempt = await finalizeAttempt({
@@ -105,7 +114,11 @@ export async function PATCH(req: NextRequest) {
     if ("error" in r) return r.error;
     const { taker, exam, body } = r;
 
-    const session = await startOrResume(exam, taker);
+    const existing = await getSession(exam.id, taker);
+    if (!existing && !isOpen(exam)) {
+      return NextResponse.json({ error: "This test isn't open right now" }, { status: 404 });
+    }
+    const session = existing ?? (await startOrResume(exam, taker));
 
     if (isExpired(session, exam)) {
       // Too late to record new answers — mark what was saved before the bell.

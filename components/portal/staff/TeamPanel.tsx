@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { useApi, useInvalidate } from "@/lib/client/api";
+import { ApiError, sendJson, useApi, useInvalidate } from "@/lib/client/api";
 import { pageCount, pageRange } from "@/lib/paging";
 import { isSuperAdmin, ROLE_LABELS } from "@/lib/roles";
 import type { SignedInStaff, Staff, StaffRole } from "@/lib/types";
@@ -27,6 +27,8 @@ export default function TeamPanel({
   const [search, setSearch] = useState("");
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
   const [error, setError] = useState("");
+  const [newPassword, setNewPassword] = useState<{ fullName: string; email: string; password: string } | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const { refetch } = staffQ;
   const invalidate = useInvalidate();
@@ -68,6 +70,38 @@ export default function TeamPanel({
       setError(e instanceof Error ? e.message : "Could not update that account");
     } finally {
       setBusyId("");
+    }
+  }
+
+  async function resetPassword(s: Staff) {
+    const ok = await confirm({
+      title: `Reset ${s.fullName}'s password?`,
+      message: "Their current password stops working straight away. You'll be shown the new one once, to give them privately.",
+      confirmLabel: "Reset password",
+    });
+    if (!ok) return;
+    setBusyId(s.id);
+    setError("");
+    setNewPassword(null);
+    setCopied(false);
+    try {
+      const d = await sendJson<{ password: string }>("/api/staff", "PATCH", { id: s.id, action: "reset-password" });
+      setNewPassword({ fullName: s.fullName, email: s.email, password: d.password });
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) return onUnauthorized();
+      setError(e instanceof Error ? e.message : "Could not reset the password");
+    } finally {
+      setBusyId("");
+    }
+  }
+
+  async function copyPassword() {
+    if (!newPassword) return;
+    try {
+      await navigator.clipboard.writeText(newPassword.password);
+      setCopied(true);
+    } catch {
+      /* clipboard blocked: they can still read it off the screen */
     }
   }
 
@@ -126,6 +160,23 @@ export default function TeamPanel({
           data-tour="team-search"
           className="mt-4 w-full rounded-btn border border-smoke px-3 py-2.5 text-sm outline-none focus:border-brand-navy sm:max-w-sm"
         />
+        {newPassword && (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-card border border-brand-green bg-brand-green/10 px-4 py-3">
+            <p className="text-sm text-ink">
+              New password for <strong>{newPassword.fullName}</strong> ({newPassword.email}):{" "}
+              <span className="font-mono text-base font-bold text-brand-green">{newPassword.password}</span>
+              <span className="ml-2 text-graphite">Give it to them privately. It won&rsquo;t be shown again.</span>
+            </p>
+            <span className="flex gap-3">
+              <button type="button" onClick={copyPassword} className="cursor-pointer text-sm font-semibold text-brand-navy hover:underline">
+                {copied ? "Copied" : "Copy"}
+              </button>
+              <button type="button" onClick={() => setNewPassword(null)} className="cursor-pointer text-sm font-semibold text-graphite hover:text-ink">
+                Dismiss
+              </button>
+            </span>
+          </div>
+        )}
         {error && (
           <p className="mt-3 text-sm font-semibold text-brand-red" role="alert">
             {error}
@@ -228,6 +279,17 @@ export default function TeamPanel({
                               className="cursor-pointer text-[13px] font-semibold text-brand-navy hover:underline disabled:opacity-50"
                             >
                               Edit name
+                            </button>
+                          )}
+                          {!isSelf && !locked && (
+                            <button
+                              type="button"
+                              disabled={busyId === s.id}
+                              data-tour="team-password"
+                              onClick={() => resetPassword(s)}
+                              className="cursor-pointer text-[13px] font-semibold text-brand-navy hover:underline disabled:opacity-50"
+                            >
+                              Reset password
                             </button>
                           )}
                           {!isSelf && !locked && (

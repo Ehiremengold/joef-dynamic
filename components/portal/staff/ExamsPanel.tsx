@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { useApi, useInvalidate } from "@/lib/client/api";
+import { formatExamTime, isoToLagosInput, lagosInputToIso } from "@/lib/lagosTime";
 import { parseQuestions } from "@/lib/questionParser";
 import { examAccess, isAdmin, type ExamAccess } from "@/lib/roles";
 import { CLASSES, type Exam, type SignedInStaff } from "@/lib/types";
@@ -193,7 +194,7 @@ function ExamCard({
   access: ExamAccess;
   onRequested: () => void;
 }) {
-  const [panel, setPanel] = useState<"none" | "questions" | "sittings">("none");
+  const [panel, setPanel] = useState<"none" | "questions" | "sittings" | "schedule">("none");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -277,6 +278,7 @@ function ExamCard({
           <p className="text-[13px] text-graphite">
             {exam.questions.length} question{exam.questions.length === 1 ? "" : "s"} · {exam.durationMins} mins
           </p>
+          <ScheduleStatus exam={exam} />
         </div>
         {access === "view" && (
           <span data-tour="exam-viewonly" className="rounded-btn bg-mist px-2 py-0.5 text-xs font-semibold text-graphite">View only</span>
@@ -302,6 +304,14 @@ function ExamCard({
           className="cursor-pointer rounded-btn border border-ink px-3 py-1.5 text-sm font-semibold transition-colors duration-200 hover:bg-ink hover:text-white"
         >
           {open ? "Close" : "Questions"}
+        </button>
+        <button
+          type="button"
+          data-tour="exam-schedule"
+          onClick={() => setPanel(panel === "schedule" ? "none" : "schedule")}
+          className="cursor-pointer rounded-btn border border-ink px-3 py-1.5 text-sm font-semibold transition-colors duration-200 hover:bg-ink hover:text-white"
+        >
+          {panel === "schedule" ? "Close" : "Date & time"}
         </button>
         <button
           type="button"
@@ -345,6 +355,9 @@ function ExamCard({
         />
       )}
       {panel === "sittings" && <SittingsPanel exam={exam} authFetch={authFetch} access={access} />}
+      {panel === "schedule" && (
+        <ScheduleEditor exam={exam} busy={busy} canEdit={access !== "view"} onSave={(patch) => update(patch)} />
+      )}
     </div>
   );
 }
@@ -370,6 +383,98 @@ function mmss(secs: number) {
   const m = Math.floor(Math.max(0, secs) / 60);
   const s = Math.max(0, secs) % 60;
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+/** The exam's date and time, and where that leaves it for students. */
+function ScheduleStatus({ exam }: { exam: Exam }) {
+  if (!exam.opensAt) return null;
+  const when = formatExamTime(exam.opensAt);
+  const [label, tone] = !exam.active
+    ? ["Hidden.", "text-pewter"]
+    : Date.now() < Date.parse(exam.opensAt)
+      ? ["Coming up:", "text-brand-navy"]
+      : ["Opened", "text-brand-green"];
+  return (
+    <p className={`text-[13px] font-semibold ${tone}`}>
+      {label} {when} <span className="font-normal text-pewter">(Lagos time)</span>
+    </p>
+  );
+}
+
+/**
+ * The date and time of the exam. Students see it under "Coming up" once the
+ * exam is switched on (Open), and can start it from that moment. With no date
+ * and time, the Open switch alone decides, as before.
+ */
+function ScheduleEditor({
+  exam,
+  busy,
+  canEdit,
+  onSave,
+}: {
+  exam: Exam;
+  busy: boolean;
+  canEdit: boolean;
+  onSave: (patch: Record<string, unknown>) => Promise<boolean>;
+}) {
+  const [value, setValue] = useState(isoToLagosInput(exam.opensAt));
+  const [notice, setNotice] = useState("");
+  const iso = lagosInputToIso(value);
+  const unchanged = iso === exam.opensAt;
+
+  async function save(opensAt: string | null, done: string) {
+    setNotice("");
+    if (await onSave({ opensAt })) setNotice(done);
+  }
+
+  return (
+    <div className="border-t border-smoke p-5">
+      <p className="font-display text-sm font-bold tracking-tight">Date &amp; time</p>
+      <p className="mt-1 max-w-[620px] text-[13px] leading-relaxed text-pewter">
+        Lagos time. Once the exam is switched on (Open), students see it under &ldquo;Coming up&rdquo; with this date
+        and time, and the Start button appears by itself when it arrives. Untick Open to hide it again.
+      </p>
+      <div className="mt-3 flex flex-wrap items-end gap-3">
+        <label className="text-[13px] font-semibold">
+          Date and time of the exam
+          <input
+            type="datetime-local"
+            value={value}
+            disabled={!canEdit}
+            onChange={(e) => setValue(e.target.value)}
+            className="mt-1 block rounded-btn border border-smoke px-3 py-2 text-sm outline-none focus:border-brand-navy disabled:bg-mist"
+          />
+        </label>
+        {canEdit && (
+          <>
+            <button
+              type="button"
+              disabled={busy || unchanged || !iso}
+              onClick={() => save(iso, `Saved: ${iso ? formatExamTime(iso) : ""}.`)}
+              className="cursor-pointer rounded-btn bg-brand-navy px-4 py-2 text-sm font-semibold text-white hover:bg-ink disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Save date &amp; time
+            </button>
+            {exam.opensAt && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  setValue("");
+                  save(null, "Date and time removed. The Open switch alone decides now.");
+                }}
+                className="cursor-pointer text-[13px] font-semibold text-brand-red hover:underline disabled:opacity-50"
+              >
+                Remove date &amp; time
+              </button>
+            )}
+          </>
+        )}
+      </div>
+      {iso && !unchanged && <p className="mt-2 text-[13px] text-ink">Students will see: {formatExamTime(iso)}</p>}
+      {notice && <p className="mt-2 text-sm font-semibold text-brand-green">{notice}</p>}
+    </div>
+  );
 }
 
 /**

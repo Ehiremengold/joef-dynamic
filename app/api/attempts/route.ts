@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
     }
 
     const exam = await getExam(body.examId);
-    if (!exam || !isOpen(exam)) {
+    if (!exam || !exam.active) {
       return NextResponse.json({ error: "Exam not available" }, { status: 404 });
     }
 
@@ -78,6 +78,11 @@ export async function POST(req: NextRequest) {
     // only what was autosaved before time ran out counts. Otherwise a taker
     // could sit on an open tab, take as long as they liked, and submit late.
     const session = await getSession(exam.id, taker);
+    // Outside the exam's window, only a sitting that was already under way
+    // may hand in (a test started before the close, finishing at the bell).
+    if (!isOpen(exam) && !session) {
+      return NextResponse.json({ error: "Exam not available" }, { status: 404 });
+    }
     const answers =
       session && isExpired(session, exam) ? session.answers : body.answers;
 

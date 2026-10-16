@@ -43,13 +43,22 @@ function useStaff() {
     await refetch();
   }, [forgetEverything, refetch]);
 
+  const [signingOut, setSigningOut] = useState(false);
   const signOut = useCallback(async () => {
-    await browserClient().auth.signOut();
-    forgetEverything();
-    client.setQueryData(apiKey("/api/me"), { kind: null });
+    setSigningOut(true);
+    try {
+      // The server ends the login and removes its cookies (see /api/auth/logout).
+      await fetch("/api/auth/logout", { method: "POST" });
+      // Drop the browser client's copy too, without waiting on its lock.
+      void browserClient().auth.signOut({ scope: "local" }).catch(() => undefined);
+    } finally {
+      forgetEverything();
+      client.setQueryData(apiKey("/api/me"), { kind: null });
+      setSigningOut(false);
+    }
   }, [client, forgetEverything]);
 
-  return { me, loading: isPending, refresh, signedIn, signOut };
+  return { me, loading: isPending, refresh, signedIn, signOut, signingOut };
 }
 
 const TAB_KEY = "jdc-staff-tab";
@@ -79,7 +88,7 @@ function useTab(): [Tab, (t: Tab) => void] {
 const ADMIN_TABS: Tab[] = ["classes", "sessions", "team"];
 
 // Bump a tab's number when its tour changes enough that everyone should see it again.
-const TAB_TOUR_VERSION: Partial<Record<Tab, number>> = { students: 2 };
+const TAB_TOUR_VERSION: Partial<Record<Tab, number>> = { students: 3, exams: 2, team: 2 };
 
 const TABS: [Tab, string][] = [
   ["exams", "Exams & questions"],
@@ -95,7 +104,7 @@ const TABS: [Tab, string][] = [
 ];
 
 export default function StaffPage() {
-  const { me, loading, refresh, signedIn, signOut } = useStaff();
+  const { me, loading, refresh, signedIn, signOut, signingOut } = useStaff();
   const [chosenTab, setTab] = useTab();
   // A teacher never lands on an admin-only tab, even one remembered from an admin's visit.
   const tab: Tab = me && !isAdmin(me.role) && ADMIN_TABS.includes(chosenTab) ? "exams" : chosenTab;
@@ -138,9 +147,10 @@ export default function StaffPage() {
                       type="button"
                       data-tour="staff-signout"
                       onClick={signOut}
-                      className="cursor-pointer rounded-btn border border-white/40 px-4 py-2 text-sm font-semibold text-white transition-colors duration-200 hover:bg-white hover:text-ink"
+                      disabled={signingOut}
+                      className="cursor-pointer rounded-btn border border-white/40 px-4 py-2 text-sm font-semibold text-white transition-colors duration-200 hover:bg-white hover:text-ink disabled:cursor-wait disabled:opacity-60"
                     >
-                      Sign out
+                      {signingOut ? "Signing out…" : "Sign out"}
                     </button>
                   )}
                 </div>
