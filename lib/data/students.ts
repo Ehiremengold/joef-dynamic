@@ -3,6 +3,7 @@ import { serviceClient } from "@/lib/supabase/server";
 import { generatePin, hashPin, verifyPin } from "@/lib/auth/pin";
 import type { Page } from "@/lib/paging";
 import type { ClassName, Student } from "@/lib/types";
+import { clearStudent } from "./loginThrottle";
 import { readPage } from "./paging";
 
 type Row = Record<string, unknown>;
@@ -241,11 +242,15 @@ export async function getStudentByAdmissionNumber(admissionNumber: string): Prom
 export async function resetStudentPin(id: string): Promise<string> {
   const pin = generatePin(6);
   const pin_hash = await hashPin(pin);
-  const { error } = await serviceClient()
+  const { data, error } = await serviceClient()
     .from("students")
     .update({ pin_hash })
-    .eq("id", id);
+    .eq("id", id)
+    .select("admission_number")
+    .single();
   if (error) throw new Error(error.message);
+  // A new PIN also lifts any lock from wrong guesses at the old one.
+  await clearStudent(data.admission_number as string);
   return pin;
 }
 
@@ -304,6 +309,11 @@ export async function setStudentActive(id: string, active: boolean): Promise<voi
 }
 
 /** Verify admission number + PIN for student login. */
+// A real bcrypt hash of nothing in particular: checked against when the
+// admission number doesn't exist, so a wrong number takes as long to refuse
+// as a wrong PIN and can't be used to find out which numbers are real.
+const NO_SUCH_STUDENT_HASH = "$2b$10$CwTycUXWue0Thq9StjUM0uJ8DPrSPQrjWLFqvF3Fj1lPC3KqRUuG.";
+
 export async function verifyStudentLogin(
   admissionNumber: string,
   pin: string
@@ -314,7 +324,6 @@ export async function verifyStudentLogin(
     .eq("admission_number", admissionNumber.trim())
     .eq("active", true)
     .maybeSingle();
-  if (!data) return null;
-  const ok = await verifyPin(pin, data.pin_hash as string);
-  return ok ? mapStudent(data) : null;
+  const ok = await verifyPin(pin, (data?.pin_hash as string | undefined) ?? NO_SUCH_STUDENT_HASH);
+  return data && ok ? mapStudent(data) : null;
 }

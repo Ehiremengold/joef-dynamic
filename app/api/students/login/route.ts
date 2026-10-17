@@ -1,13 +1,37 @@
 import { NextRequest, NextResponse } from "next/server";
 import { errorResponse } from "@/lib/api";
-import { verifyStudentLogin } from "@/lib/data/students";
+import { normaliseAdmissionNumber, verifyStudentLogin } from "@/lib/data/students";
+import { activeLock, clearStudent, recordFailure, type Lock } from "@/lib/data/loginThrottle";
 import { setTakerSession } from "@/lib/auth/session";
 
-/** POST /api/students/login — { admissionNumber, pin } → sets taker session. */
+/** The visitor's address as Vercel reports it (the first hop is the client). */
+function clientIp(req: NextRequest): string | null {
+  return req.headers.get("x-real-ip") || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null;
+}
+
+function locked(lock: Lock): NextResponse {
+  const minutes = Math.max(1, Math.ceil((lock.until.getTime() - Date.now()) / 60_000));
+  const wait = `${minutes} minute${minutes === 1 ? "" : "s"}`;
+  return NextResponse.json(
+    {
+      error:
+        lock.scope === "student"
+          ? `Too many wrong PINs for this admission number. Try again in ${wait}, or ask your teacher to reset your PIN.`
+          : `Too many wrong sign-ins from this network. Try again in ${wait}.`,
+    },
+    { status: 429, headers: { "Retry-After": String(minutes * 60) } }
+  );
+}
+
+/**
+ * POST /api/students/login — { admissionNumber, pin } → sets taker session.
+ * Wrong PINs are counted (see lib/data/loginThrottle.ts): too many locks the
+ * admission number, or the network, for a while.
+ */
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => null);
-    const admissionNumber = String(body?.admissionNumber || "").trim();
+    const admissionNumber = normaliseAdmissionNumber(String(body?.admissionNumber || ""));
     const pin = String(body?.pin || "").trim();
     if (!admissionNumber || !pin) {
       return NextResponse.json(
@@ -16,14 +40,24 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const ip = clientIp(req);
+    const lock = await activeLock(admissionNumber, ip);
+    if (lock) return locked(lock);
+
     const student = await verifyStudentLogin(admissionNumber, pin);
     if (!student) {
+      // A wrong number counts the same as a wrong PIN, so guessing either is slowed.
+      if (await recordFailure(admissionNumber, ip)) {
+        const now = await activeLock(admissionNumber, ip);
+        if (now) return locked(now);
+      }
       return NextResponse.json(
         { error: "Incorrect admission number or PIN" },
         { status: 401 }
       );
     }
 
+    await clearStudent(admissionNumber);
     await setTakerSession({
       kind: "student",
       id: student.id,

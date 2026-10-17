@@ -79,7 +79,7 @@ export const STUDENT_SIGNIN_TOUR: TourStep[] = [
   {
     target: "student-pin",
     title: "Your PIN",
-    text: "A 6-digit secret number. Don't share it. If you've forgotten it, ask your class teacher or the school office. Staff can give you a new one in seconds.",
+    text: "A 6-digit secret number. Don't share it. After 5 wrong tries, sign-in is paused for 15 minutes to stop anyone guessing it. If you've forgotten it, ask your class teacher or the school office: they can give you a new one in seconds, which also lifts the pause.",
   },
   {
     target: "student-signin",

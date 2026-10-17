@@ -1,0 +1,65 @@
+import "server-only";
+import { serviceClient } from "@/lib/supabase/server";
+
+// How hard student sign-in is to guess (see 0017_login_throttle.sql).
+//  - One admission number: 5 wrong PINs in 15 minutes locks it for 15
+//    minutes. At most ~480 guesses a day against one student, so finding a
+//    6-digit PIN would take years. A correct PIN or a staff PIN reset clears it.
+//  - One network address: 200 wrong PINs in 15 minutes locks it for 15
+//    minutes, which stops trying many students from one place. It's high on
+//    purpose: a school lab shares one address, and typos on exam day must
+//    never lock the whole room out.
+const WINDOW_SECONDS = 15 * 60;
+const LOCK_SECONDS = 15 * 60;
+const PER_STUDENT = 5;
+const PER_ADDRESS = 200;
+
+export const studentKey = (admissionNumber: string) => `adm:${admissionNumber.trim().toUpperCase()}`;
+export const addressKey = (ip: string) => `ip:${ip}`;
+
+export type Lock = { scope: "student" | "address"; until: Date };
+
+/**
+ * The throttle is a second line of defence, so it fails open: if it can't be
+ * read (say the deploy went out before migration 0017 was run), sign-in
+ * carries on unthrottled and the problem is logged, rather than locking a
+ * whole school out of an exam.
+ */
+function unavailable(what: string, error: { message: string }): null {
+  console.error(`login throttle unavailable (${what}): ${error.message}`);
+  return null;
+}
+
+/** The lock (if any) that should stop this attempt before the PIN is even checked. */
+export async function activeLock(admissionNumber: string, ip: string | null): Promise<Lock | null> {
+  const keys = [studentKey(admissionNumber), ...(ip ? [addressKey(ip)] : [])];
+  const { data, error } = await serviceClient()
+    .from("login_throttle")
+    .select("key, locked_until")
+    .in("key", keys)
+    .gt("locked_until", new Date().toISOString());
+  if (error) return unavailable("check", error);
+  const latest = (data ?? []).sort((a, b) => Date.parse(b.locked_until) - Date.parse(a.locked_until))[0];
+  if (!latest) return null;
+  return { scope: latest.key.startsWith("ip:") ? "address" : "student", until: new Date(latest.locked_until) };
+}
+
+/** Count a wrong attempt; returns the lock it caused, if this was the last allowed. */
+export async function recordFailure(admissionNumber: string, ip: string | null): Promise<Lock | null> {
+  const keys = [studentKey(admissionNumber), ...(ip ? [addressKey(ip)] : [])];
+  const limits = [PER_STUDENT, ...(ip ? [PER_ADDRESS] : [])];
+  const { data, error } = await serviceClient().rpc("record_login_failure", {
+    p_keys: keys,
+    p_limits: limits,
+    p_window_seconds: WINDOW_SECONDS,
+    p_lock_seconds: LOCK_SECONDS,
+  });
+  if (error) return unavailable("count", error);
+  return data ? { scope: "student", until: new Date(data as string) } : null;
+}
+
+/** A correct PIN, or staff resetting it: the student starts with a clean slate. */
+export async function clearStudent(admissionNumber: string): Promise<void> {
+  const { error } = await serviceClient().from("login_throttle").delete().eq("key", studentKey(admissionNumber));
+  if (error) unavailable("clear", error);
+}
