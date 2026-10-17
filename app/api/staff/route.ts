@@ -6,7 +6,7 @@ import {
   createStaff,
   getStaffById,
   listStaff,
-  updateStaff, resetStaffPassword } from "@/lib/data/staff";
+  updateStaff, resetStaffPassword, generatePassword } from "@/lib/data/staff";
 import { isAdmin, isSuperAdmin } from "@/lib/roles";
 import type { StaffRole } from "@/lib/types";
 
@@ -30,7 +30,9 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => null);
     const fullName = String(body?.fullName || "").trim();
     const email = String(body?.email || "").trim().toLowerCase();
-    const password = String(body?.password || "");
+    // Empty: the portal makes one (shown once in the reply).
+    const typed = String(body?.password || "");
+    const password = typed || generatePassword();
     const role: StaffRole = ROLES.includes(body?.role) ? body.role : "teacher";
     if (role === "super_admin" && !isSuperAdmin(admin.role)) {
       return NextResponse.json({ error: "Only a super admin can create a super admin" }, { status: 403 });
@@ -50,7 +52,7 @@ export async function POST(req: NextRequest) {
     }
 
     const staff = await createStaff({ fullName, email, password, role });
-    return NextResponse.json({ staff }, { status: 201 });
+    return NextResponse.json({ staff, password }, { status: 201 });
   } catch (e) {
     return errorResponse(e);
   }
