@@ -8,6 +8,7 @@ import { examAccess, type ExamAccess } from "@/lib/roles";
 import { CLASSES, type Exam, type SignedInStaff } from "@/lib/types";
 import { useConfirm } from "./useConfirm";
 import EntranceAccess from "./EntranceAccess";
+import SendToScoresDialog from "./SendToScoresDialog";
 
 /** Cookie-authenticated fetch; calls onUnauthorized on a 401 so the shell re-checks. */
 type AuthFetch = (url: string, init?: RequestInit) => Promise<Response>;
@@ -65,6 +66,7 @@ export default function ExamsPanel({
               <ExamCard key={exam.id} exam={exam} authFetch={authFetch} onChanged={reload}
               access={examAccess(me, exam)}
               onRequested={() => invalidate("/api/deletion-requests")}
+              onUnauthorized={onUnauthorized}
             />
             ))}
           </div>
@@ -185,14 +187,17 @@ function ExamCard({
   onChanged,
   access,
   onRequested,
+  onUnauthorized,
 }: {
   exam: Exam;
   authFetch: AuthFetch;
   onChanged: () => void;
   access: ExamAccess;
   onRequested: () => void;
+  onUnauthorized: () => void;
 }) {
   const [panel, setPanel] = useState<"none" | "questions" | "sittings" | "schedule">("none");
+  const [sending, setSending] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -319,6 +324,16 @@ function ExamCard({
         >
           {panel === "sittings" ? "Close" : "Sittings"}
         </button>
+        {exam.type === "class" && (
+          <button
+            type="button"
+            data-tour="exam-send"
+            onClick={() => setSending(true)}
+            className="cursor-pointer rounded-btn border border-brand-navy px-3 py-1.5 text-sm font-semibold text-brand-navy transition-colors duration-200 hover:bg-brand-navy hover:text-white"
+          >
+            Send to Term scores
+          </button>
+        )}
         <a
           data-tour="exam-download"
           href={`/api/exams/${exam.id}/results-pdf`}
@@ -353,6 +368,7 @@ function ExamCard({
         />
       )}
       {panel === "sittings" && <SittingsPanel exam={exam} authFetch={authFetch} access={access} />}
+      {sending && <SendToScoresDialog exam={exam} onClose={() => setSending(false)} onUnauthorized={onUnauthorized} />}
       {panel === "schedule" && (
         <ScheduleEditor exam={exam} busy={busy} canEdit={access !== "view"} onSave={(patch) => update(patch)} />
       )}

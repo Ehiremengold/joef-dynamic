@@ -277,6 +277,11 @@ function examsTour(role: StaffRole): TourStep[] {
       text: "Who is taking the test right now, with their time left and how many they've answered. If someone lost time to a power cut, give them +5 or +10 minutes. Below that is everyone who has finished, with their score. The exam's owner can press “Allow retake”, which deletes that score so the student can sit it again.",
     },
     {
+      target: "exam-send",
+      title: "Send to Term scores",
+      text: "Put this test's CBT results on the term score sheet. Choose the term, the subject, and whether it counts as CA (out of 40) or exam (out of 60): a score of 32/40 becomes CA 32 or exam 48. You see every student's mark before anything is saved. Marks already entered are kept unless you tick Replace. Class teachers send for their own class and the current term; admins for anyone.",
+    },
+    {
       target: "exam-download",
       title: "Download results",
       text: "A PDF of everyone's scores for this exam, ready to print.",
