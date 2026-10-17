@@ -5,8 +5,9 @@ const nextConfig: NextConfig = {
   // path relative to its own package folder at runtime. If webpack bundles
   // it, that relative path breaks (ENOENT looking inside .next/server/...).
   // Marking it external makes Next require() it straight from node_modules
-  // instead, where its own relative paths resolve correctly.
-  serverExternalPackages: ["pdfkit"],
+  // instead, where its own relative paths resolve correctly. bcrypt is a
+  // native addon (a .node binary): it must be loaded from node_modules too.
+  serverExternalPackages: ["pdfkit", "bcrypt"],
 };
 
 export default nextConfig;

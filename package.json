@@ -11,6 +11,7 @@
     "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.109.0",
     "@tanstack/react-query": "^5.104.0",
+    "bcrypt": "^6.0.0",
     "bcryptjs": "^3.0.3",
     "driver.js": "^1.6.0",
     "jose": "^6.2.3",
@@ -23,6 +24,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.10",
+    "@types/bcrypt": "^5.0.2",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^22.15.0",
     "@types/pdfkit": "^0.17.6",
