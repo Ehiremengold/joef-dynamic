@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ApiError, sendJson } from "@/lib/client/api";
+import { closeOnBackdrop, useCloseOnEscape } from "./useCloseOnEscape";
 
 const INPUT = "mt-1 w-full rounded-btn border border-smoke px-3 py-2.5 text-sm outline-none focus:border-brand-navy";
 
@@ -15,12 +16,10 @@ export default function ChangePasswordDialog({ onClose, onUnauthorized }: { onCl
   const [done, setDone] = useState(false);
   const first = useRef<HTMLInputElement>(null);
 
+  useCloseOnEscape(onClose);
   useEffect(() => {
     first.current?.focus();
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, []);
 
   const mismatch = again.length > 0 && again !== next;
   const short = next.length > 0 && next.length < 8;
@@ -41,7 +40,7 @@ export default function ChangePasswordDialog({ onClose, onUnauthorized }: { onCl
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4 text-ink" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4 text-ink" onMouseDown={closeOnBackdrop(onClose)}>
       <form onSubmit={submit} role="dialog" aria-modal="true" aria-labelledby="pw-title" className="w-full max-w-[420px] rounded-card border border-smoke bg-white p-6">
         <h3 id="pw-title" className="font-display text-lg font-bold tracking-tight">Change my password</h3>
         {done ? (

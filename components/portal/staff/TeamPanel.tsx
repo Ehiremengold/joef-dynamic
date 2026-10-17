@@ -271,7 +271,7 @@ export default function TeamPanel({
                                 Edit details
                               </button>
                             ))}
-                          {!isSelf && !locked && (
+                          {!isSelf && !locked && (isSuperAdmin(me.role) || s.role === "teacher") && (
                             <button
                               type="button"
                               disabled={busyId === s.id}

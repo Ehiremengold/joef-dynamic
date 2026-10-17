@@ -3,11 +3,14 @@ import { serviceClient } from "@/lib/supabase/server";
 import {
   EDITABLE_FIELDS,
   type ChangeRequest,
+  type DeletionSnapshot,
   type EditableField,
   type FieldValues,
   type RecordType,
 } from "@/lib/recordChanges";
-import { normaliseAdmissionNumber } from "./students";
+import { classLabel } from "@/lib/classes";
+import type { ClassName } from "@/lib/types";
+import { deleteStudent, normaliseAdmissionNumber, studentDeletionImpact } from "./students";
 
 type Row = Record<string, unknown>;
 
@@ -121,11 +124,13 @@ const SELECT = "*, requester:staff!requested_by(full_name), decider:staff!decide
 function map(r: Row): ChangeRequest {
   return {
     id: r.id as string,
+    action: ((r.action as string | undefined) ?? "edit") as ChangeRequest["action"],
     recordType: r.record_type as RecordType,
     recordId: r.record_id as string,
     recordName: r.record_name as string,
     changes: (r.changes as FieldValues) ?? {},
-    previous: (r.previous as FieldValues) ?? {},
+    previous: r.action === "delete" ? {} : ((r.previous as FieldValues) ?? {}),
+    deletion: r.action === "delete" ? ((r.previous as DeletionSnapshot | null) ?? null) : null,
     reason: r.reason as string,
     requestedBy: ((r.requester as Row | null)?.full_name as string | undefined) ?? null,
     status: r.status as ChangeRequest["status"],
@@ -146,6 +151,33 @@ export async function listChangeRequests(filter: { requestedBy?: string; pending
   return [...all.filter((r) => r.status === "pending"), ...all.filter((r) => r.status !== "pending")];
 }
 
+/** Write a request to the history; returns its id. */
+async function recordRequest(row: Row): Promise<string> {
+  const { data, error } = await serviceClient().from("record_change_requests").insert(row).select("id").single();
+  if (error) {
+    if ((error as { code?: string }).code === "23505") {
+      throw new ChangeError("A change to this record is already waiting for approval. A super admin needs to decide on it first.");
+    }
+    throw new Error(error.message);
+  }
+  return data.id as string;
+}
+
+/**
+ * A super admin's own change: recorded as approved first, then made. If
+ * making it fails, the history entry is taken back out, so the history never
+ * claims a change that didn't happen.
+ */
+async function recordThenDo(row: Row, work: () => Promise<void>): Promise<void> {
+  const id = await recordRequest({ ...row, status: "approved", decided_by: row.requested_by, decided_at: new Date().toISOString() });
+  try {
+    await work();
+  } catch (e) {
+    await serviceClient().from("record_change_requests").delete().eq("id", id);
+    throw e;
+  }
+}
+
 /**
  * Ask for a change. A super admin's change is applied at once and recorded
  * as approved by them; anyone else's waits for a super admin.
@@ -162,10 +194,7 @@ export async function requestChange(input: {
   if (!current) throw new ChangeError("Record not found");
   const changes = await checkChanges(input.type, input.id, input.changes, current.values);
   const previous: FieldValues = Object.fromEntries(Object.keys(changes).map((f) => [f, current.values[f as EditableField] ?? null]));
-  const supa = serviceClient();
-
-  if (input.applyNow) await apply(input.type, input.id, changes, previous);
-  const { error } = await supa.from("record_change_requests").insert({
+  const row: Row = {
     record_type: input.type,
     record_id: input.id,
     record_name: current.name,
@@ -173,23 +202,59 @@ export async function requestChange(input: {
     previous,
     reason: input.reason,
     requested_by: input.requestedBy,
-    status: input.applyNow ? "approved" : "pending",
-    decided_by: input.applyNow ? input.requestedBy : null,
-    decided_at: input.applyNow ? new Date().toISOString() : null,
-  });
-  if (error) {
-    if ((error as { code?: string }).code === "23505") {
-      throw new ChangeError("A change to this record is already waiting for approval. A super admin needs to decide on it first.");
-    }
-    throw new Error(error.message);
-  }
+  };
+  if (input.applyNow) await recordThenDo(row, () => apply(input.type, input.id, changes, previous));
+  else await recordRequest({ ...row, status: "pending" });
   return { applied: input.applyNow };
 }
 
 /**
- * A super admin's decision. Approving re-checks the change against the
- * record as it is now: if any of the fields was changed in the meantime, the
- * request is marked obsolete rather than overwrite the newer value.
+ * Ask to delete a student. A super admin's deletion happens at once and is
+ * recorded as approved by them; anyone else's waits for a super admin.
+ * Who they were and what goes with them are kept with the request.
+ */
+export async function requestStudentDeletion(input: {
+  id: string;
+  reason: string;
+  requestedBy: string;
+  applyNow: boolean;
+}): Promise<{ applied: boolean }> {
+  const { data: s } = await serviceClient()
+    .from("students")
+    .select("full_name, admission_number, class_name, classes(level, arm, campuses(name))")
+    .eq("id", input.id)
+    .maybeSingle();
+  if (!s) throw new ChangeError("Student not found");
+  const cls = s.classes as unknown as Row | null;
+  const snapshot: DeletionSnapshot = {
+    admissionNumber: s.admission_number as string,
+    className: cls
+      ? classLabel({ campusName: (cls.campuses as Row | null)?.name as string | undefined, level: cls.level as ClassName, arm: (cls.arm as string | null) ?? null })
+      : (s.class_name as string),
+    impact: await studentDeletionImpact(input.id),
+  };
+  const row: Row = {
+    action: "delete",
+    record_type: "student",
+    record_id: input.id,
+    record_name: s.full_name as string,
+    changes: {},
+    previous: snapshot,
+    reason: input.reason,
+    requested_by: input.requestedBy,
+  };
+  if (input.applyNow) await recordThenDo(row, () => deleteStudent(input.id));
+  else await recordRequest({ ...row, status: "pending" });
+  return { applied: input.applyNow };
+}
+
+/**
+ * A super admin's decision. The request is claimed first (pending → the
+ * decision, in one conditional update), so two super admins deciding at
+ * once can't both act: the second is told it's already decided. Approving an
+ * edit re-checks it against the record as it is now, and marks it obsolete
+ * rather than overwrite a newer value. If carrying out an approval fails, the
+ * request goes back to pending.
  */
 export async function decideChangeRequest(id: string, approve: boolean, deciderId: string): Promise<ChangeRequest["status"]> {
   const supa = serviceClient();
@@ -198,8 +263,14 @@ export async function decideChangeRequest(id: string, approve: boolean, deciderI
   if (r.status !== "pending") throw new ChangeError("This request has already been decided");
   const req = map(r);
 
+  // Work out the outcome, and everything approving would do, before claiming.
   let status: ChangeRequest["status"] = "rejected";
-  if (approve) {
+  let carryOut: (() => Promise<void>) | null = null;
+  if (approve && req.action === "delete") {
+    const { data: still } = await supa.from("students").select("id").eq("id", req.recordId).maybeSingle();
+    status = still ? "approved" : "obsolete";
+    if (still) carryOut = () => deleteStudent(req.recordId);
+  } else if (approve) {
     const now = await currentValues(req.recordType, req.recordId);
     const moved = !now || Object.keys(req.changes).some((f) => (now.values[f as EditableField] ?? null) !== (req.previous[f as EditableField] ?? null));
     if (moved) {
@@ -207,15 +278,27 @@ export async function decideChangeRequest(id: string, approve: boolean, deciderI
     } else {
       // Values may have become taken since (another record got the number).
       const changes = await checkChanges(req.recordType, req.recordId, req.changes, now.values);
-      await apply(req.recordType, req.recordId, changes, req.previous);
       status = "approved";
+      carryOut = () => apply(req.recordType, req.recordId, changes, req.previous);
     }
   }
-  const { error } = await supa
+
+  const { data: claimed, error } = await supa
     .from("record_change_requests")
     .update({ status, decided_by: deciderId, decided_at: new Date().toISOString() })
     .eq("id", id)
-    .eq("status", "pending");
+    .eq("status", "pending")
+    .select("id");
   if (error) throw new Error(error.message);
+  if (!claimed?.length) throw new ChangeError("Another super admin has just decided this request");
+
+  if (carryOut) {
+    try {
+      await carryOut();
+    } catch (e) {
+      await supa.from("record_change_requests").update({ status: "pending", decided_by: null, decided_at: null }).eq("id", id);
+      throw e;
+    }
+  }
   return status;
 }

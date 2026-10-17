@@ -2,6 +2,7 @@ import "server-only";
 import { serviceClient } from "@/lib/supabase/server";
 import { generatePin, hashPin, verifyPin } from "@/lib/auth/pin";
 import type { Page } from "@/lib/paging";
+import type { DeletionImpact } from "@/lib/recordChanges";
 import type { ClassName, Student } from "@/lib/types";
 import { clearStudent } from "./loginThrottle";
 import { readPage } from "./paging";
@@ -77,8 +78,23 @@ export async function listStudentsPage(
   const periodMatch: PeriodMatch | null = !byPeriod ? null : isNow ? "at-school-now" : "had-results";
   // Results only matter for a past period; "now" is simply the active students.
   const termIds = periodMatch === "had-results" ? periodTermIds : null;
+  // For a past period, campus and class mean where the student was *then*:
+  // the class on their marks, not the one they are in today.
+  const classFilter = Boolean(filter.campusId || filter.classId || filter.className);
+  let thenClassIds: string[] | null = null;
+  if (termIds && classFilter) {
+    let cq = supa.from("classes").select("id");
+    if (filter.classId) cq = cq.eq("id", filter.classId);
+    if (filter.campusId) cq = cq.eq("campus_id", filter.campusId);
+    if (filter.className) cq = cq.eq("level", filter.className);
+    const { data, error } = await cq;
+    if (error) throw new Error(error.message);
+    thenClassIds = (data ?? []).map((c) => c.id as string);
+  }
   // Nothing can match (a campus with no classes, a session with no terms).
-  if (campusClassIds?.length === 0 || termIds?.length === 0) return { rows: [], total: 0, periodMatch };
+  if (campusClassIds?.length === 0 || termIds?.length === 0 || thenClassIds?.length === 0) {
+    return { rows: [], total: 0, periodMatch };
+  }
 
   return readPage(
     (from, to) => {
@@ -89,9 +105,14 @@ export async function listStudentsPage(
       let q = supa.from("students").select(columns, { count: "exact" });
       if (termIds) q = q.in("term_scores.term_id", termIds).limit(1, { referencedTable: "term_scores" });
       if (filter.name) q = q.ilike("full_name", `%${filter.name}%`);
-      if (filter.className) q = q.eq("class_name", filter.className);
-      if (filter.classId) q = q.eq("class_id", filter.classId);
-      if (campusClassIds) q = q.in("class_id", campusClassIds);
+      if (thenClassIds) {
+        // A mark in that period, recorded under one of those classes.
+        q = q.in("term_scores.class_id", thenClassIds);
+      } else {
+        if (filter.className) q = q.eq("class_name", filter.className);
+        if (filter.classId) q = q.eq("class_id", filter.classId);
+        if (campusClassIds) q = q.in("class_id", campusClassIds);
+      }
       if (filter.year) q = q.eq("entry_year", filter.year);
       if (filter.status) q = q.eq("active", filter.status === "active");
       if (periodMatch === "at-school-now") q = q.eq("active", true);
@@ -326,4 +347,44 @@ export async function verifyStudentLogin(
     .maybeSingle();
   const ok = await verifyPin(pin, (data?.pin_hash as string | undefined) ?? NO_SUCH_STUDENT_HASH);
   return data && ok ? mapStudent(data) : null;
+}
+
+/** What deleting this student would remove (or unlink), counted. */
+export async function studentDeletionImpact(id: string): Promise<DeletionImpact> {
+  const supa = serviceClient();
+  const count = async (table: string) => {
+    const { count, error } = await supa.from(table).select("*", { count: "exact", head: true }).eq("student_id", id);
+    if (error) throw new Error(error.message);
+    return count ?? 0;
+  };
+  const [marks, attendance, reports, parents, exemptions, promotions, sittings, testResults] = await Promise.all([
+    count("term_scores"),
+    count("student_attendance"),
+    count("term_reports"),
+    count("student_parents"),
+    count("student_subject_exemptions"),
+    count("student_promotions"),
+    count("attempt_sessions"),
+    count("attempts"),
+  ]);
+  return { marks, attendance, reports, parents, exemptions, promotions, sittings, testResults };
+}
+
+/**
+ * Remove a student. Everything counted by studentDeletionImpact goes with
+ * them (the tables cascade), except CBT results, which stay under their name,
+ * unlinked. A parent record left with no children is removed too; failing to
+ * tidy one is logged, since the student is already gone by then.
+ */
+export async function deleteStudent(id: string): Promise<void> {
+  const supa = serviceClient();
+  const { data: links, error: linkErr } = await supa.from("student_parents").select("parent_id").eq("student_id", id);
+  if (linkErr) throw new Error(linkErr.message);
+  const { error } = await supa.from("students").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  for (const { parent_id } of links ?? []) {
+    const { count, error: countErr } = await supa.from("student_parents").select("*", { count: "exact", head: true }).eq("parent_id", parent_id);
+    const { error: delErr } = countErr || count !== 0 ? { error: countErr } : await supa.from("parents").delete().eq("id", parent_id);
+    if (countErr || delErr) console.error(`could not tidy parent ${parent_id} after deleting student ${id}: ${(countErr ?? delErr)!.message}`);
+  }
 }

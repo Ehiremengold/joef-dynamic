@@ -14,25 +14,33 @@ export async function listSubjectProgress(
     classTermStudentIds(classId, termId),
   ]);
   if (error) throw new Error(error.message);
+  // Counted the way the sheet shows them: the sheet's students, by student,
+  // leaving out anyone exempt from the subject (and any old mark of theirs).
   const entered = new Map<string, number>();
   const exempt = new Map<string, number>();
   if (studentIds.length) {
-    const { data: ex } = await supa
+    const { data: ex, error: exErr } = await supa
       .from("student_subject_exemptions")
-      .select("subject_id")
+      .select("student_id, subject_id")
       .in("student_id", studentIds);
+    if (exErr) throw new Error(exErr.message);
+    const exemptPair = new Set((ex ?? []).map((r) => `${r.student_id}|${r.subject_id}`));
     for (const r of ex ?? []) exempt.set(r.subject_id as string, (exempt.get(r.subject_id as string) ?? 0) + 1);
     // One row per student per subject: a big class (100 students × 18
     // subjects) passes Supabase's 1000-row cap, so read a page at a time.
     for (let from = 0; ; from += 1000) {
-      const { data } = await supa
+      const { data, error: scoreErr } = await supa
         .from("term_scores")
-        .select("subject_id")
+        .select("student_id, subject_id")
         .eq("term_id", termId)
-        .eq("class_id", classId)
+        .in("student_id", studentIds)
         .order("id")
         .range(from, from + 999);
-      for (const r of data ?? []) entered.set(r.subject_id as string, (entered.get(r.subject_id as string) ?? 0) + 1);
+      if (scoreErr) throw new Error(scoreErr.message);
+      for (const r of data ?? []) {
+        if (exemptPair.has(`${r.student_id}|${r.subject_id}`)) continue;
+        entered.set(r.subject_id as string, (entered.get(r.subject_id as string) ?? 0) + 1);
+      }
       if (!data || data.length < 1000) break;
     }
   }

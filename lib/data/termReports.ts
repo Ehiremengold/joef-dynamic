@@ -48,7 +48,21 @@ export async function classForTerm(
   return (data?.class_id as string | undefined) ?? currentClassId;
 }
 
-/** The students who were in a class for a term, each with what has been written for them. */
+/**
+ * For many students at once: the class each sat in for a term, the class on
+ * their scores for it, or (before any are entered) the class they are in today.
+ */
+export async function classesForTerm(
+  students: { id: string; classId: string | null }[],
+  termId: string
+): Promise<Map<string, string | null>> {
+  const out = new Map(students.map((s) => [s.id, s.classId]));
+  if (students.length === 0) return out;
+  const scored = await allScoreRows({ termId, studentIds: students.map((s) => s.id) });
+  for (const r of scored) if (r.class_id) out.set(r.student_id as string, r.class_id as string);
+  return out;
+}
+
 /**
  * The students who were in a class for a term: everyone with scores in the
  * class for the term (whether active today or not), plus active students in
@@ -69,6 +83,7 @@ export async function classTermStudentIds(classId: string, termId: string): Prom
   return [...scored, ...currentIds.filter((id) => !scoredElsewhere.has(id))];
 }
 
+/** The students who were in a class for a term, each with what has been written for them. */
 export async function listClassTermReports(classId: string, termId: string): Promise<TermReportRow[]> {
   const supa = serviceClient();
   const ids = await classTermStudentIds(classId, termId);

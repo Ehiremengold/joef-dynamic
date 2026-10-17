@@ -374,6 +374,11 @@ const STUDENTS_TOUR: TourStep[] = [
     text: "Untick any of their class's subjects this student doesn't take, so it is left off their report card. Put them in a class first.",
   },
   {
+    target: "student-delete",
+    title: "Delete",
+    text: "For a record that shouldn't exist, such as a duplicate. You're shown everything that goes with it first (marks, attendance, report comments). Every deletion needs a reason and is kept in the Approvals history. An admin's waits for a super admin's approval; a super admin's happens straight away (with the admission number typed to confirm when there's history). It can't be undone, so for a student who has left, use Deactivate instead: it keeps their history.",
+  },
+  {
     target: "student-transcript",
     title: "Transcript",
     text: "A PDF of all the student's results.",
@@ -469,6 +474,11 @@ function scoresTour(role: StaffRole): TourStep[] {
       text: "Each subject the class takes, with how many students have marks (e.g. 25/30). Pick one to open its sheet. The number turns green when everyone is done.",
     },
     {
+      target: "scores-readonly",
+      title: "Read only",
+      text: "You're looking at a past term. Its marks can be read here, but only an admin can change them, so last year's results aren't rewritten by accident.",
+    },
+    {
       target: "scores-table",
       title: "Type the marks",
       text: "CA and exam for each student. The total and grade fill in as you type. Press Enter to go down the column. Already have them in Excel? Click the first student's CA box and paste the column; paste two columns (CA, then exam) to fill both. A mark outside the range turns red. Leave both boxes empty to remove a student's mark.",
@@ -494,7 +504,7 @@ function approvalsTour(role: StaffRole): TourStep[] {
       target: "approvals-records",
       title: "Record changes",
       text: decides
-        ? "Each request shows the record, every field's old and new value, the reason and who asked. Approve saves it straight away; Reject leaves the record as it is. If the record was changed again after the request was made, it isn't applied, so nothing newer is overwritten."
+        ? "Each request shows the record, every field's old and new value (or, for a deletion, everything that would go with the student), the reason and who asked. Approve applies it straight away; Reject leaves the record as it is. If the record was changed again after the request was made, an edit isn't applied, so nothing newer is overwritten."
         : "Each of your requests, with the old and new values and whether it's waiting, approved or rejected.",
     },
     {
@@ -658,7 +668,7 @@ function teamTour(role: StaffRole): TourStep[] {
     {
       target: "team-password",
       title: "Reset password",
-      text: "For someone who has forgotten their password. The portal makes a new one and shows it to you once, with a Copy button. Give it to them privately. Their old password stops working straight away.",
+      text: "For someone who has forgotten their password. The portal makes a new one and shows it to you once, with a Copy button. Give it to them privately. Their old password stops working straight away. Admins can reset teachers' passwords; only a super admin can reset an administrator's.",
     },
     {
       target: "team-active",

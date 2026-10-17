@@ -12,9 +12,12 @@ import {
 /** A non-2xx answer from one of the portal's own API routes. */
 export class ApiError extends Error {
   status: number;
-  constructor(message: string, status: number) {
+  /** The route's whole reply, for anything it sends besides `error` (e.g. a 409's details). */
+  body: Record<string, unknown> | null;
+  constructor(message: string, status: number, body: Record<string, unknown> | null = null) {
     super(message);
     this.status = status;
+    this.body = body;
   }
 }
 
@@ -22,7 +25,7 @@ export class ApiError extends Error {
 export async function getJson<T>(url: string): Promise<T> {
   const res = await fetch(url);
   const body = await res.json().catch(() => null);
-  if (!res.ok) throw new ApiError(body?.error || "Something went wrong", res.status);
+  if (!res.ok) throw new ApiError(body?.error || "Something went wrong", res.status, body);
   return body as T;
 }
 
@@ -34,7 +37,7 @@ export async function sendJson<T = unknown>(url: string, method: string, body?: 
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const data = await res.json().catch(() => null);
-  if (!res.ok) throw new ApiError(data?.error || "Something went wrong", res.status);
+  if (!res.ok) throw new ApiError(data?.error || "Something went wrong", res.status, data);
   return data as T;
 }
 

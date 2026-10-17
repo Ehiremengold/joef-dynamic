@@ -26,8 +26,51 @@ export const FIELD_LABELS: Record<EditableField, string> = {
   email: "Email",
 };
 
+/** What deleting a student takes with it, shown before anyone confirms. */
+export type DeletionImpact = {
+  marks: number;
+  attendance: number;
+  reports: number;
+  parents: number;
+  exemptions: number;
+  promotions: number;
+  /** Tests they have open right now. */
+  sittings: number;
+  /** CBT results stay (under the student's name) but are no longer linked. */
+  testResults: number;
+};
+
+/** A deletion request's record of the student, kept even after they are gone. */
+export type DeletionSnapshot = { admissionNumber: string; className: string; impact: DeletionImpact };
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/**
+ * What a deletion removes, as short phrases ("4 subject marks"), and what it
+ * leaves. One wording for the delete form and the approval list.
+ */
+export function describeDeletion(i: DeletionImpact): { lost: string[]; kept: string | null } {
+  const lost = [
+    i.marks && plural(i.marks, "subject mark", "subject marks"),
+    i.attendance && plural(i.attendance, "term of attendance", "terms of attendance"),
+    i.reports && plural(i.reports, "report-card comment", "report-card comments"),
+    i.parents && plural(i.parents, "parent link", "parent links"),
+    i.exemptions && plural(i.exemptions, "subject exemption", "subject exemptions"),
+    i.promotions && plural(i.promotions, "promotion record", "promotion records"),
+    i.sittings && plural(i.sittings, "test in progress", "tests in progress"),
+  ].filter(Boolean) as string[];
+  const kept = i.testResults
+    ? `Their ${plural(i.testResults, "CBT result stays", "CBT results stay")} under Results with their name.`
+    : null;
+  return { lost, kept };
+}
+
 export type ChangeRequest = {
   id: string;
+  /** An edit changes fields; a delete removes the record. */
+  action: "edit" | "delete";
+  /** For a delete: who it was and what went with them. */
+  deletion: DeletionSnapshot | null;
   recordType: RecordType;
   recordId: string;
   recordName: string;

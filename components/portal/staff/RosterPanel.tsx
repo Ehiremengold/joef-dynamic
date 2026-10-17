@@ -2,11 +2,12 @@
 
 import { classLabel } from "@/lib/classes";
 import { useEffect, useState } from "react";
-import { EDITABLE, useApi, useInvalidate } from "@/lib/client/api";
+import { ApiError, EDITABLE, sendJson, useApi, useInvalidate } from "@/lib/client/api";
 import { isAdmin, isSuperAdmin } from "@/lib/roles";
 import type { ChangeRequest } from "@/lib/recordChanges";
 import { CLASSES, type AcademicSession, type Campus, type Class, type SignedInStaff, type Student, type Subject, type Term } from "@/lib/types";
 import EditRecordDialog from "./EditRecordDialog";
+import DeleteStudentDialog from "./DeleteStudentDialog";
 import Pagination from "./Pagination";
 import { usePagedList } from "./usePagedList";
 import { useConfirm } from "./useConfirm";
@@ -84,6 +85,11 @@ export default function RosterPanel({
   const admin = isAdmin(me.role);
   const invalidate = useInvalidate();
   const [editing, setEditing] = useState<Student | null>(null);
+  const [deleting, setDeleting] = useState<Student | null>(null);
+  const labelForClass = (s: Student) => {
+    const cls = classes.find((c) => c.id === s.classId);
+    return cls ? classLabel(cls) : s.className;
+  };
   // Students with an edit waiting for a super admin, so it isn't asked for twice.
   const pending = useApi<{ requests: ChangeRequest[] }>(admin ? "/api/change-requests?pending=1" : null, onUnauthorized);
   const pendingFor = new Set(
@@ -271,8 +277,13 @@ export default function RosterPanel({
               {response?.periodMatch === "at-school-now"
                 ? " at school now (every active student)"
                 : response?.periodMatch === "had-results"
-                  ? " with results recorded then"
+                  ? ` with results recorded then${filters.campusId || filters.classKey ? ", in that class at the time" : ""}`
                   : ""}
+              {response?.periodMatch === "at-school-now" && filters.status === "inactive" && (
+                <span className="ml-1 text-ink">
+                  The current session only lists students at school now, so nobody inactive appears. Choose &ldquo;Any session&rdquo; to see students who have left.
+                </span>
+              )}
             </span>
             {filtered && (
               <button
@@ -378,6 +389,16 @@ export default function RosterPanel({
                         >
                           Subjects
                         </button>
+                        {admin && !pendingFor.has(s.id) && (
+                          <button
+                            type="button"
+                            data-tour="student-delete"
+                            onClick={() => setDeleting(s)}
+                            className="cursor-pointer text-[13px] font-semibold text-brand-red hover:underline"
+                          >
+                            Delete
+                          </button>
+                        )}
                         <a
                           data-tour="student-transcript"
                           href={`/api/students/${s.id}/transcript`}
@@ -398,6 +419,24 @@ export default function RosterPanel({
         <Pagination page={page} total={total} onPage={setPage} />
       </div>
 
+      {deleting && (
+        <DeleteStudentDialog
+          student={deleting}
+          classLabel={labelForClass(deleting)}
+          superAdmin={isSuperAdmin(me.role)}
+          onClose={() => setDeleting(null)}
+          onUnauthorized={onUnauthorized}
+          onDone={(applied) => {
+            setNotice({
+              text: applied
+                ? `${deleting.fullName} (${deleting.admissionNumber}) has been deleted.`
+                : `Deletion of ${deleting.fullName} sent to a super admin for approval.`,
+            });
+            setDeleting(null);
+            invalidate("/api/students", "/api/change-requests", "/api/classes/*");
+          }}
+        />
+      )}
       {editing && (
         <EditRecordDialog
           recordType="student"
@@ -580,15 +619,13 @@ function AddStudent({
   const campusClasses = classes.filter((c) => c.campusId === campusId);
 
   async function add(confirmDuplicate: boolean): Promise<void> {
-    const res = await fetch("/api/students", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ admissionNumber, fullName, classId, entryYear, confirmDuplicate }),
-    });
-    if (res.status === 401) return onUnauthorized();
-    const d = await res.json();
-    if (res.status === 409 && d.similar) {
-      const list: Similar[] = d.similar;
+    let d: { student: Student; pin: string };
+    try {
+      d = await sendJson("/api/students", "POST", { admissionNumber, fullName, classId, entryYear, confirmDuplicate });
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) return onUnauthorized();
+      if (!(e instanceof ApiError && e.status === 409 && Array.isArray(e.body?.similar))) throw e;
+      const list = e.body.similar as Similar[];
       const ok = await confirm({
         title: "Is this student already in the portal?",
         message: (
@@ -613,7 +650,6 @@ function AddStudent({
       if (ok) return add(true);
       return;
     }
-    if (!res.ok) throw new Error(d.error || "Could not add student");
     onPin({ text: `${d.student.fullName} added. Admission ${d.student.admissionNumber}, PIN:`, pin: d.pin });
     setAdmissionNumber("");
     setFullName("");

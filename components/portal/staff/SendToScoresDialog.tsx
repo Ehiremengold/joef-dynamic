@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { keepPreviousData } from "@tanstack/react-query";
 import { ApiError, sendJson, useApi, useInvalidate } from "@/lib/client/api";
 import { CA_MAX, EXAM_MAX, type Exam, type Subject, type Term } from "@/lib/types";
+import { closeOnBackdrop, useCloseOnEscape } from "./useCloseOnEscape";
 
 type Part = "ca" | "exam";
 type Row = {
@@ -17,7 +19,7 @@ type Row = {
   action: "add" | "replace" | "keep" | "skip";
   note: string | null;
 };
-type Plan = { rows: Row[]; saved: number; canSave: boolean };
+type Plan = { rows: Row[]; saved?: number; canSave: boolean; subjectWarning: string | null };
 
 const SELECT = "mt-1 w-full cursor-pointer rounded-btn border border-smoke bg-white px-3 py-2 text-sm outline-none focus:border-brand-navy";
 const ACTION: Record<Row["action"], { label: string; className: string }> = {
@@ -47,8 +49,6 @@ export default function SendToScoresDialog({ exam, onClose, onUnauthorized }: { 
   const [part, setPart] = useState<Part>("ca");
   const [overwrite, setOverwrite] = useState(false);
   const [wholeMarks, setWholeMarks] = useState(true);
-  const [plan, setPlan] = useState<Plan | null>(null);
-  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState("");
@@ -58,33 +58,18 @@ export default function SendToScoresDialog({ exam, onClose, onUnauthorized }: { 
   const max = part === "ca" ? CA_MAX : EXAM_MAX;
   const options = { termId, subjectId, part, overwrite, wholeMarks };
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  useCloseOnEscape(onClose);
 
-  // Preview again whenever an option changes; only the newest answer is shown.
-  useEffect(() => {
-    if (!termId || !subjectId) return;
-    let stale = false;
-    setLoading(true);
-    setError("");
-    setDone("");
-    sendJson<Plan>(`/api/exams/${exam.id}/send-to-scores`, "POST", { ...options, preview: true })
-      .then((p) => !stale && setPlan(p))
-      .catch((e) => {
-        if (stale) return;
-        if (e instanceof ApiError && e.status === 401) return onUnauthorized();
-        setPlan(null);
-        setError(e instanceof Error ? e.message : "Could not prepare the marks");
-      })
-      .finally(() => !stale && setLoading(false));
-    return () => {
-      stale = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [exam.id, termId, subjectId, part, overwrite, wholeMarks]);
+  // The preview: read like any other list, and read again after a save.
+  const previewPath = `/api/exams/${exam.id}/send-to-scores`;
+  const previewUrl =
+    termId && subjectId
+      ? `${previewPath}?${new URLSearchParams({ termId, subjectId, part, overwrite: overwrite ? "1" : "0", wholeMarks: wholeMarks ? "1" : "0" })}`
+      : null;
+  const previewQ = useApi<Plan>(previewUrl, onUnauthorized, { staleTime: 0, placeholderData: keepPreviousData });
+  const plan = previewQ.data ?? null;
+  const loading = previewQ.isFetching;
+  const shownError = error || previewQ.error?.message || "";
 
   const rows = plan?.rows ?? [];
   const count = (a: Row["action"]) => rows.filter((r) => r.action === a).length;
@@ -94,11 +79,10 @@ export default function SendToScoresDialog({ exam, onClose, onUnauthorized }: { 
     setSaving(true);
     setError("");
     try {
-      const p = await sendJson<Plan>(`/api/exams/${exam.id}/send-to-scores`, "POST", options);
-      setPlan(p);
+      const p = await sendJson<Plan>(previewPath, "POST", options);
       setDone(`${p.saved} mark${p.saved === 1 ? "" : "s"} saved to Term scores.`);
-      // Term-score sheets and their progress counts live under each class.
-      invalidate("/api/classes/*");
+      // Term-score sheets and their progress counts live under each class; the preview changes too.
+      invalidate("/api/classes/*", previewPath);
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) return onUnauthorized();
       setError(e instanceof Error ? e.message : "Could not save the marks");
@@ -108,7 +92,7 @@ export default function SendToScoresDialog({ exam, onClose, onUnauthorized }: { 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4" onMouseDown={closeOnBackdrop(onClose)}>
       <div role="dialog" aria-modal="true" aria-labelledby="send-title" className="flex max-h-[90vh] w-full max-w-[760px] flex-col rounded-card border border-smoke bg-white">
         <div className="border-b border-smoke p-6">
           <h3 id="send-title" className="font-display text-lg font-bold tracking-tight">Send &ldquo;{exam.title}&rdquo; to Term scores</h3>
@@ -161,11 +145,11 @@ export default function SendToScoresDialog({ exam, onClose, onUnauthorized }: { 
         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
           {!termId || !subjectId ? (
             <p className="text-sm text-graphite">Choose the term and subject to see the marks.</p>
-          ) : loading && !plan ? (
+          ) : previewQ.isPending ? (
             <p className="text-sm text-graphite">Working out the marks…</p>
           ) : rows.length === 0 ? (
             <p className="text-sm text-graphite">
-              {error ? "" : "No results to send: nobody you can enter marks for has sat this test yet."}
+              {shownError ? "" : "No results to send: nobody you can enter marks for has sat this test yet."}
             </p>
           ) : (
             <table className={`w-full text-left text-sm ${loading ? "opacity-60" : ""}`}>
@@ -210,7 +194,8 @@ export default function SendToScoresDialog({ exam, onClose, onUnauthorized }: { 
                 .filter(Boolean)
                 .join(", ")}
           </p>
-          {error && <p className="w-full text-sm font-semibold text-brand-red" role="alert">{error}</p>}
+          {shownError && <p className="w-full text-sm font-semibold text-brand-red" role="alert">{shownError}</p>}
+          {plan?.subjectWarning && <p className="w-full text-[13px] font-semibold text-ink">Check the subject: {plan.subjectWarning}</p>}
           {done && <p className="w-full text-sm font-semibold text-brand-green">{done}</p>}
           {plan && !plan.canSave && <p className="w-full text-[13px] text-ink">Only an admin can change a past term&rsquo;s scores.</p>}
           <button type="button" onClick={onClose} className="cursor-pointer rounded-btn px-4 py-2 text-sm font-semibold text-graphite hover:text-ink">

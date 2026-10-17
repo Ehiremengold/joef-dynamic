@@ -2,17 +2,39 @@
 
 import { useState } from "react";
 import { ApiError, sendJson, useApi, useInvalidate } from "@/lib/client/api";
-import { FIELD_LABELS, showValue, type ChangeRequest, type EditableField } from "@/lib/recordChanges";
+import { describeDeletion, FIELD_LABELS, showValue, type ChangeRequest, type DeletionSnapshot, type EditableField } from "@/lib/recordChanges";
 import { isSuperAdmin } from "@/lib/roles";
 import type { SignedInStaff } from "@/lib/types";
 import ApprovalsPanel from "./ApprovalsPanel";
-import { useConfirm } from "./useConfirm";
+import { useConfirm, type ConfirmOptions } from "./useConfirm";
 
 const STATUS: Record<ChangeRequest["status"], { label: string; className: string }> = {
   pending: { label: "Waiting for approval", className: "bg-brand-gold text-ink" },
   approved: { label: "Approved and saved", className: "bg-brand-green/15 text-brand-green" },
   rejected: { label: "Rejected", className: "bg-mist text-graphite" },
   obsolete: { label: "Out of date: record changed since", className: "bg-mist text-graphite" },
+};
+
+/** How each kind of request is worded: confirming an approval, its title, its status. */
+const ACTIONS: Record<
+  ChangeRequest["action"],
+  { prefix: string | null; status: Partial<Record<ChangeRequest["status"], string>>; confirm: (name: string) => ConfirmOptions }
+> = {
+  edit: {
+    prefix: null,
+    status: {},
+    confirm: (name) => ({ title: `Approve the change to ${name}?`, message: "It's saved to their record straight away.", confirmLabel: "Approve and save" }),
+  },
+  delete: {
+    prefix: "Delete:",
+    status: { approved: "Approved and deleted", obsolete: "Already gone" },
+    confirm: (name) => ({
+      title: `Delete ${name} permanently?`,
+      message: "They're removed straight away with everything listed. This can't be undone.",
+      confirmLabel: "Approve and delete",
+      danger: true,
+    }),
+  },
 };
 
 const when = (iso: string) =>
@@ -33,20 +55,14 @@ export default function ApprovalsTab({ me, onUnauthorized }: { me: SignedInStaff
   const requests = q.data?.requests ?? [];
 
   async function decide(r: ChangeRequest, approve: boolean) {
-    if (approve) {
-      const ok = await confirm({
-        title: `Approve the change to ${r.recordName}?`,
-        message: "It's saved to their record straight away.",
-        confirmLabel: "Approve and save",
-      });
-      if (!ok) return;
-    }
+    if (approve && !(await confirm(ACTIONS[r.action].confirm(r.recordName)))) return;
     setBusyId(r.id);
     setError("");
     try {
       const d = await sendJson<{ status: ChangeRequest["status"] }>("/api/change-requests", "PATCH", { id: r.id, approve });
       if (d.status === "obsolete") setError(`${r.recordName}'s record was changed after this request was made, so it wasn't applied.`);
-      await invalidate("/api/change-requests", "/api/students", "/api/staff", "/api/classes");
+      // An approved delete or edit can change class sheets too (scores, attendance, reports).
+      await invalidate("/api/change-requests", "/api/students", "/api/staff", "/api/classes", "/api/classes/*");
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) return onUnauthorized();
       setError(e instanceof Error ? e.message : "Could not record the decision");
@@ -84,10 +100,16 @@ export default function ApprovalsTab({ me, onUnauthorized }: { me: SignedInStaff
                 <li key={r.id} className="rounded-btn border border-smoke p-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="font-semibold">
+                      {ACTIONS[r.action].prefix && <span className="mr-1 text-brand-red">{ACTIONS[r.action].prefix}</span>}
                       {r.recordName} <span className="font-normal text-pewter">· {r.recordType === "student" ? "Student" : "Staff"}</span>
                     </p>
-                    <span className={`rounded-btn px-2 py-0.5 text-xs font-bold ${STATUS[r.status].className}`}>{STATUS[r.status].label}</span>
+                    <span className={`rounded-btn px-2 py-0.5 text-xs font-bold ${STATUS[r.status].className}`}>
+                      {ACTIONS[r.action].status[r.status] ?? STATUS[r.status].label}
+                    </span>
                   </div>
+                  {r.deletion ? (
+                    <DeletionSummary snapshot={r.deletion} />
+                  ) : (
                   <table className="mt-2 text-sm">
                     <tbody>
                       {Object.keys(r.changes).map((f) => (
@@ -100,6 +122,7 @@ export default function ApprovalsTab({ me, onUnauthorized }: { me: SignedInStaff
                       ))}
                     </tbody>
                   </table>
+                  )}
                   <p className="mt-2 text-[13px] text-graphite">&ldquo;{r.reason}&rdquo;</p>
                   <p className="mt-1 text-[12px] text-pewter">
                     {r.requestedBy ?? "Someone"}, {when(r.createdAt)}
@@ -133,6 +156,20 @@ export default function ApprovalsTab({ me, onUnauthorized }: { me: SignedInStaff
       </section>
 
       <ApprovalsPanel me={me} onDecided={() => invalidate("/api/exams", "/api/attempts")} onUnauthorized={onUnauthorized} />
+    </div>
+  );
+}
+
+/** What a deletion request will remove, as it stood when it was asked for. */
+function DeletionSummary({ snapshot }: { snapshot: DeletionSnapshot }) {
+  const { lost, kept } = describeDeletion(snapshot.impact);
+  return (
+    <div className="mt-2 text-sm text-graphite">
+      <p>
+        {snapshot.admissionNumber} · {snapshot.className}
+      </p>
+      <p className="mt-0.5">{lost.length ? `Deleted with them: ${lost.join(", ")}.` : "Nothing else on record."}</p>
+      {kept && <p className="text-[13px] text-pewter">{kept}</p>}
     </div>
   );
 }

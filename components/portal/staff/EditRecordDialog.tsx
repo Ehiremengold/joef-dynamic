@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ApiError, sendJson } from "@/lib/client/api";
 import { EDITABLE_FIELDS, FIELD_LABELS, type EditableField, type FieldValues, type RecordType } from "@/lib/recordChanges";
+import { closeOnBackdrop, useCloseOnEscape } from "./useCloseOnEscape";
 
 const INPUT = "mt-1 w-full rounded-btn border border-smoke px-3 py-2 text-sm outline-none focus:border-brand-navy";
 
@@ -39,12 +40,10 @@ export default function EditRecordDialog({
   const [error, setError] = useState("");
   const first = useRef<HTMLInputElement>(null);
 
+  useCloseOnEscape(onClose);
   useEffect(() => {
     first.current?.focus();
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, []);
 
   const changed = fields.filter((f) => (values[f] ?? "").trim() !== (initial[f] ?? ""));
   const needsReason = !superAdmin;
@@ -97,7 +96,7 @@ export default function EditRecordDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4" onMouseDown={closeOnBackdrop(onClose)}>
       <form onSubmit={submit} role="dialog" aria-modal="true" aria-labelledby="edit-title" className="max-h-[90vh] w-full max-w-[560px] overflow-y-auto rounded-card border border-smoke bg-white p-6">
         <h3 id="edit-title" className="font-display text-lg font-bold tracking-tight">{title}</h3>
         <p className="mt-1 text-[13px] text-pewter">

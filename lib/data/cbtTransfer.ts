@@ -2,6 +2,7 @@ import "server-only";
 import { serviceClient } from "@/lib/supabase/server";
 import { classLabel } from "@/lib/classes";
 import { CA_MAX, EXAM_MAX, type ClassName } from "@/lib/types";
+import { classesForTerm } from "./termReports";
 
 type Row = Record<string, unknown>;
 
@@ -12,6 +13,8 @@ export type TransferRow = {
   studentId: string;
   fullName: string;
   admissionNumber: string;
+  /** The class they sat in for that term; the mark is recorded under it. */
+  classId: string | null;
   classLabel: string;
   /** The CBT result, e.g. 32 of 40. */
   score: number;
@@ -53,7 +56,7 @@ export async function planCbtTransfer(input: {
   if (ids.length === 0) return [];
 
   const [{ data: students }, { data: existing }, { data: exempt }] = await Promise.all([
-    supa.from("students").select("id, full_name, admission_number, class_id, classes(level, arm, campuses(name))").in("id", ids),
+    supa.from("students").select("id, full_name, admission_number, class_id").in("id", ids),
     supa
       .from("term_scores")
       .select("student_id, ca_score, exam_score, class_id")
@@ -62,11 +65,26 @@ export async function planCbtTransfer(input: {
       .in("student_id", ids),
     supa.from("student_subject_exemptions").select("student_id").eq("subject_id", input.subjectId).in("student_id", ids),
   ]);
-  const classIds = [...new Set((students ?? []).map((s) => s.class_id as string | null).filter(Boolean))] as string[];
-  const { data: offered } = classIds.length
-    ? await supa.from("class_subjects").select("class_id").eq("subject_id", input.subjectId).in("class_id", classIds)
-    : { data: [] };
+  // The class each student sat in for *that* term, not today's: for a past
+  // term a promoted student's mark belongs with last year's class.
+  const termClass = await classesForTerm(
+    (students ?? []).map((s) => ({ id: s.id as string, classId: (s.class_id as string | null) ?? null })),
+    input.termId
+  );
+  const classIds = [...new Set([...termClass.values()].filter(Boolean))] as string[];
+  const [{ data: offered }, { data: classes }] = classIds.length
+    ? await Promise.all([
+        supa.from("class_subjects").select("class_id").eq("subject_id", input.subjectId).in("class_id", classIds),
+        supa.from("classes").select("id, level, arm, campuses(name)").in("id", classIds),
+      ])
+    : [{ data: [] }, { data: [] }];
   const takesSubject = new Set((offered ?? []).map((r) => r.class_id as string));
+  const labelFor = new Map(
+    ((classes ?? []) as Row[]).map((c) => [
+      c.id as string,
+      classLabel({ campusName: (c.campuses as Row | null)?.name as string | undefined, level: c.level as ClassName, arm: (c.arm as string | null) ?? null }),
+    ])
+  );
   const exemptIds = new Set((exempt ?? []).map((r) => r.student_id as string));
   const studentById = new Map((students ?? []).map((s) => [s.id as string, s as Row]));
   const existingFor = new Map((existing ?? []).map((r) => [r.student_id as string, r as Row]));
@@ -75,23 +93,22 @@ export async function planCbtTransfer(input: {
   for (const a of attempts ?? []) {
     const s = studentById.get(a.student_id as string);
     if (!s) continue;
-    const classId = (s.class_id as string | null) ?? null;
+    const prev = existingFor.get(s.id as string);
+    // A mark already on the sheet keeps the class it was recorded under.
+    const classId = ((prev?.class_id as string | null) ?? termClass.get(s.id as string)) ?? null;
     if (input.allowedClassIds && !(classId && input.allowedClassIds.has(classId))) continue;
-    const cls = s.classes as Row | null;
     const score = Number(a.score);
     const total = Number(a.total);
     const raw = total > 0 ? (score / total) * max : 0;
     const mark = input.wholeMarks ? Math.round(raw) : Math.round(raw * 100) / 100;
-    const prev = existingFor.get(s.id as string);
     const currentRaw = prev?.[input.part === "ca" ? "ca_score" : "exam_score"];
     const current = currentRaw === null || currentRaw === undefined ? null : Number(currentRaw);
     const base = {
       studentId: s.id as string,
       fullName: s.full_name as string,
       admissionNumber: s.admission_number as string,
-      classLabel: cls
-        ? classLabel({ campusName: (cls.campuses as Row | null)?.name as string | undefined, level: cls.level as ClassName, arm: (cls.arm as string | null) ?? null })
-        : "No class",
+      classId,
+      classLabel: classId ? labelFor.get(classId) ?? "Class" : "No class",
       score,
       total,
     };
@@ -113,24 +130,15 @@ export async function applyCbtTransfer(input: {
   part: ScorePart;
   rows: TransferRow[];
 }): Promise<number> {
-  const supa = serviceClient();
   const write = input.rows.filter((r) => r.action === "add" || r.action === "replace");
   if (write.length === 0) return 0;
-  const ids = write.map((r) => r.studentId);
-  const [{ data: students }, { data: existing }] = await Promise.all([
-    supa.from("students").select("id, class_id").in("id", ids),
-    supa.from("term_scores").select("student_id, class_id").eq("term_id", input.termId).eq("subject_id", input.subjectId).in("student_id", ids),
-  ]);
-  const classNow = new Map((students ?? []).map((s) => [s.id as string, s.class_id as string | null]));
-  // A mark already on the sheet keeps the class it was recorded in (a past term's class).
-  const classOnSheet = new Map((existing ?? []).map((r) => [r.student_id as string, r.class_id as string | null]));
   const column = input.part === "ca" ? "ca_score" : "exam_score";
-  const { error } = await supa.from("term_scores").upsert(
+  const { error } = await serviceClient().from("term_scores").upsert(
     write.map((r) => ({
       student_id: r.studentId,
       subject_id: input.subjectId,
       term_id: input.termId,
-      class_id: classOnSheet.get(r.studentId) ?? classNow.get(r.studentId) ?? null,
+      class_id: r.classId,
       [column]: r.mark,
     })),
     { onConflict: "student_id,subject_id,term_id" }

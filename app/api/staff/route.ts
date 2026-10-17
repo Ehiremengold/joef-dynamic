@@ -86,8 +86,16 @@ export async function PATCH(req: NextRequest) {
     if (body.action === "reset-password") {
       if (id === admin.id) {
         return NextResponse.json(
-          { error: "You can't reset your own password here. Ask another admin to do it" },
+          { error: "You can't reset your own password here. Use Change my password" },
           { status: 400 }
+        );
+      }
+      // Seeing an administrator's new password means being able to sign in as
+      // them, so only a super admin may reset one. Admins reset teachers'.
+      if (!isSuperAdmin(admin.role) && isAdmin(target.role)) {
+        return NextResponse.json(
+          { error: "Only a super admin can reset an administrator's password" },
+          { status: 403 }
         );
       }
       const password = await resetStaffPassword(id);

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { errorResponse } from "@/lib/api";
 import { normaliseAdmissionNumber, verifyStudentLogin } from "@/lib/data/students";
-import { activeLock, clearStudent, recordFailure, type Lock } from "@/lib/data/loginThrottle";
+import { claimAttempt, releaseAttempt, type Lock } from "@/lib/data/loginThrottle";
 import { setTakerSession } from "@/lib/auth/session";
 
 /** The visitor's address as Vercel reports it (the first hop is the client). */
@@ -25,8 +25,8 @@ function locked(lock: Lock): NextResponse {
 
 /**
  * POST /api/students/login — { admissionNumber, pin } → sets taker session.
- * Wrong PINs are counted (see lib/data/loginThrottle.ts): too many locks the
- * admission number, or the network, for a while.
+ * Attempts are counted (see lib/data/loginThrottle.ts): too many without the
+ * right PIN locks the admission number, or the network, for a while.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -40,24 +40,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Counted before the PIN is checked, so simultaneous guesses can't all slip
+    // through; a wrong admission number counts the same as a wrong PIN.
     const ip = clientIp(req);
-    const lock = await activeLock(admissionNumber, ip);
+    const lock = await claimAttempt(admissionNumber, ip);
     if (lock) return locked(lock);
 
     const student = await verifyStudentLogin(admissionNumber, pin);
     if (!student) {
-      // A wrong number counts the same as a wrong PIN, so guessing either is slowed.
-      if (await recordFailure(admissionNumber, ip)) {
-        const now = await activeLock(admissionNumber, ip);
-        if (now) return locked(now);
-      }
       return NextResponse.json(
         { error: "Incorrect admission number or PIN" },
         { status: 401 }
       );
     }
 
-    await clearStudent(admissionNumber);
+    await releaseAttempt(admissionNumber, ip);
     await setTakerSession({
       kind: "student",
       id: student.id,
