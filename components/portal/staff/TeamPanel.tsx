@@ -324,13 +324,15 @@ function AddStaff({
   const [role, setRole] = useState<StaffRole>("teacher");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [ok, setOk] = useState("");
+  const [created, setCreated] = useState<{ fullName: string; email: string; password: string } | null>(null);
+  const [copied, setCopied] = useState(false);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError("");
-    setOk("");
+    setCreated(null);
+    setCopied(false);
     try {
       const res = await fetch("/api/staff", {
         method: "POST",
@@ -340,7 +342,8 @@ function AddStaff({
       if (res.status === 401 || res.status === 403) return onUnauthorized();
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "Could not create account");
-      setOk(`${fullName} can now sign in with ${email}.`);
+      // The password is shown this once, whether typed or made by the portal.
+      setCreated({ fullName: d.staff.fullName, email: d.staff.email, password: d.password });
       setFullName("");
       setEmail("");
       setPassword("");
@@ -356,8 +359,9 @@ function AddStaff({
     <form data-tour="team-add" onSubmit={submit} className="h-fit rounded-card border border-smoke bg-white p-6">
       <h2 className="font-display text-xl font-bold tracking-tight">Add staff</h2>
       <p className="mt-2 text-[13px] leading-relaxed text-pewter">
-        Create a login for a teacher or administrator. Share the password with
-        them securely; they can change it later.
+        Create a login for a teacher or administrator. Leave the password empty
+        and the portal makes one. Give it to them privately; they can change it
+        after signing in, under &ldquo;Change my password&rdquo;.
       </p>
 
       <label className="mt-5 block text-sm font-semibold" htmlFor="t-name">Full name</label>
@@ -378,13 +382,15 @@ function AddStaff({
         className="mt-2 w-full rounded-btn border border-smoke px-3 py-2.5 text-sm outline-none focus:border-brand-navy"
       />
 
-      <label className="mt-4 block text-sm font-semibold" htmlFor="t-pass">Temporary password</label>
+      <label className="mt-4 block text-sm font-semibold" htmlFor="t-pass">
+        Temporary password <span className="font-normal text-pewter">(optional)</span>
+      </label>
       <input
         id="t-pass"
         type="text"
         value={password}
         onChange={(e) => setPassword(e.target.value)}
-        placeholder="At least 8 characters"
+        placeholder="Leave empty to generate one"
         className="mt-2 w-full rounded-btn border border-smoke px-3 py-2.5 text-sm outline-none focus:border-brand-navy"
       />
 
@@ -401,11 +407,35 @@ function AddStaff({
       </select>
 
       {error && <p className="mt-3 text-sm font-semibold text-brand-red" role="alert">{error}</p>}
-      {ok && <p className="mt-3 text-sm font-semibold text-brand-green">{ok}</p>}
+      {created && (
+        <div className="mt-3 rounded-card border border-brand-green bg-brand-green/10 p-3 text-sm">
+          <p className="font-semibold text-ink">{created.fullName} can now sign in.</p>
+          <p className="mt-1 text-graphite">
+            Email: {created.email}
+            <br />
+            Password: <span className="font-mono text-base font-bold text-brand-green">{created.password}</span>
+          </p>
+          <p className="mt-1 text-[12px] text-graphite">Give it to them privately. It won&rsquo;t be shown again.</p>
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(`Email: ${created.email}\nPassword: ${created.password}`);
+                setCopied(true);
+              } catch {
+                /* clipboard blocked: read it off the screen */
+              }
+            }}
+            className="mt-2 cursor-pointer text-[13px] font-semibold text-brand-navy hover:underline"
+          >
+            {copied ? "Copied" : "Copy email and password"}
+          </button>
+        </div>
+      )}
 
       <button
         type="submit"
-        disabled={busy || !fullName.trim() || !email.trim() || password.length < 8}
+        disabled={busy || !fullName.trim() || !email.trim() || (password.length > 0 && password.length < 8)}
         className="mt-5 w-full cursor-pointer rounded-btn bg-brand-red px-6 py-3 font-semibold text-white transition-colors duration-200 hover:bg-brand-red-dark disabled:cursor-not-allowed disabled:opacity-50"
       >
         {busy ? "Creating…" : "Create account"}

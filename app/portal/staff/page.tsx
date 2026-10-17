@@ -18,6 +18,7 @@ import PromotionPanel from "@/components/portal/staff/PromotionPanel";
 import SessionsPanel from "@/components/portal/staff/SessionsPanel";
 import TermScoresPanel from "@/components/portal/staff/TermScoresPanel";
 import ApprovalsTab from "@/components/portal/staff/ApprovalsTab";
+import ChangePasswordDialog from "@/components/portal/staff/ChangePasswordDialog";
 import GuideTour from "@/components/portal/GuideTour";
 import { STAFF_SIGNIN_TOUR, staffDashboardTour, staffTabTour, type StaffTab } from "@/lib/tours";
 import { isAdmin, isSuperAdmin, ROLE_LABELS } from "@/lib/roles";
@@ -121,6 +122,7 @@ export default function StaffPage() {
   // A teacher never lands on an admin-only tab, even one remembered from an admin's visit.
   const tab: Tab = me && !isAdmin(me.role) && ADMIN_TABS.includes(chosenTab) ? "exams" : chosenTab;
   const waiting = useWaitingApprovals(me);
+  const [changingPassword, setChangingPassword] = useState(false);
 
   return (
     <>
@@ -138,9 +140,18 @@ export default function StaffPage() {
                 </h1>
                 {me && (
                   <p className="mt-1 text-sm text-white/70">
-                    {me.fullName} · {ROLE_LABELS[me.role]}
+                    {me.fullName} · {ROLE_LABELS[me.role]} ·{" "}
+                    <button
+                      type="button"
+                      data-tour="staff-change-password"
+                      onClick={() => setChangingPassword(true)}
+                      className="cursor-pointer font-semibold text-white/85 underline-offset-2 hover:text-brand-gold hover:underline"
+                    >
+                      Change my password
+                    </button>
                   </p>
                 )}
+                {changingPassword && <ChangePasswordDialog onClose={() => setChangingPassword(false)} onUnauthorized={refresh} />}
                 {me && <CurrentTerm onOpen={isAdmin(me.role) ? () => setTab("sessions") : undefined} />}
               </div>
               {!loading && (

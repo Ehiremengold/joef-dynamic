@@ -211,6 +211,11 @@ export function staffDashboardTour(role: StaffRole): TourStep[] {
         : "Where your edits to student and staff records, and exam deletion requests, wait for a super admin. See what was decided here.",
     },
     {
+      target: "staff-change-password",
+      title: "Change my password",
+      text: "Set your own password at any time. You'll need your current one. If you were given a password by an admin, change it to one only you know.",
+    },
+    {
       target: "staff-signout",
       title: "Sign out",
       text: "Sign out when you're finished, especially on a shared school computer.",
@@ -617,7 +622,7 @@ function teamTour(role: StaffRole): TourStep[] {
     {
       target: "team-add",
       title: "Add a staff member",
-      text: "Enter their full name, school email, a temporary password (at least 8 characters) and their role. Give them the password privately. They can change it later.",
+      text: "Enter their full name, school email and role. Leave the password empty and the portal makes one; it's shown once with a Copy button. Give it to them privately. They can change it after signing in, under “Change my password”.",
     },
     {
       title: "Roles",

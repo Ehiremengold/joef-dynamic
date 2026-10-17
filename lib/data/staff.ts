@@ -1,5 +1,6 @@
 import "server-only";
 import { randomInt } from "node:crypto";
+import { createClient } from "@supabase/supabase-js";
 import { serviceClient } from "@/lib/supabase/server";
 import type { Staff, StaffRole } from "@/lib/types";
 
@@ -43,6 +44,23 @@ export async function resetStaffPassword(id: string): Promise<string> {
   const { error } = await serviceClient().auth.admin.updateUserById(id, { password });
   if (error) throw new Error(error.message);
   return password;
+}
+
+/**
+ * A staff member changing their own password. The current one is checked by
+ * signing in with it on a throwaway client (nothing is stored), then the
+ * new one is set. Throws with a message fit for the screen.
+ */
+export async function changeOwnPassword(staff: { id: string; email: string }, current: string, next: string): Promise<void> {
+  const check = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { error: wrong } = await check.auth.signInWithPassword({ email: staff.email, password: current });
+  if (wrong) throw new Error("Your current password isn't right");
+  // That check opened a session of its own; close it rather than leave it lying around.
+  await check.auth.signOut({ scope: "local" }).catch(() => undefined);
+  const { error } = await serviceClient().auth.admin.updateUserById(staff.id, { password: next });
+  if (error) throw new Error(error.message);
 }
 
 export async function createStaff(input: {
