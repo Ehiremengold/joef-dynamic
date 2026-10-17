@@ -4,9 +4,8 @@ import { useCallback, useMemo, useState } from "react";
 import { useApi, useInvalidate } from "@/lib/client/api";
 import { formatExamTime, isoToLagosInput, lagosInputToIso } from "@/lib/lagosTime";
 import { parseQuestions } from "@/lib/questionParser";
-import { examAccess, isAdmin, type ExamAccess } from "@/lib/roles";
+import { examAccess, type ExamAccess } from "@/lib/roles";
 import { CLASSES, type Exam, type SignedInStaff } from "@/lib/types";
-import ApprovalsPanel from "./ApprovalsPanel";
 import { useConfirm } from "./useConfirm";
 import EntranceAccess from "./EntranceAccess";
 
@@ -49,7 +48,6 @@ export default function ExamsPanel({
   return (
     <div className="space-y-8">
       <EntranceAccess onUnauthorized={onUnauthorized} />
-      {isAdmin(me.role) && <ApprovalsPanel me={me} onDecided={reload} onUnauthorized={onUnauthorized} />}
       <div className="grid gap-8 lg:grid-cols-[380px_1fr]">
         <CreateExam authFetch={authFetch} onCreated={reload} />
       <div className="min-w-0">

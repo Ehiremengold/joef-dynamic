@@ -204,6 +204,13 @@ export function staffDashboardTour(role: StaffRole): TourStep[] {
       text: "Add teachers and admins, change roles, fix names and turn accounts off when someone leaves.",
     },
     {
+      target: "tab-approvals",
+      title: "Approvals",
+      text: isSuperAdmin(role)
+        ? "Changes to student and staff records, and deletions of someone else's exams, waiting for your decision. The number on the tab is how many are waiting."
+        : "Where your edits to student and staff records, and exam deletion requests, wait for a super admin. See what was decided here.",
+    },
+    {
       target: "staff-signout",
       title: "Sign out",
       text: "Sign out when you're finished, especially on a shared school computer.",
@@ -221,20 +228,13 @@ function examsTour(role: StaffRole): TourStep[] {
     {
       title: "Exams & questions",
       text: admin
-        ? "Everything about tests happens here. You can add to anyone's exam. Deleting an exam or a question someone else made goes to a super admin for approval."
+        ? "Everything about tests happens here. You can add to anyone's exam. Deleting an exam or a question someone else made goes to a super admin for approval, under the Approvals tab."
         : "Everything about tests happens here. You fully control the exams you create. Other teachers' exams are view only, but you can still download their results.",
     },
     {
       target: "exams-entrance",
       title: "Entrance access code",
       text: "Applicants need this code to start the common entrance test. Type a code and press Save code ahead of time. On test day press Activate (release) so candidates can register, and press Deactivate (revoke) when the exam is over.",
-    },
-    {
-      target: "exams-approvals",
-      title: "Deletion requests",
-      text: isSuperAdmin(role)
-        ? "Requests to delete someone else's exam or question wait here with the reason given. Approve deletes it straight away. Reject keeps it."
-        : "Your requests to delete someone else's exam or question, and what a super admin decided.",
     },
     {
       target: "exams-new",
@@ -342,6 +342,11 @@ const STUDENTS_TOUR: TourStep[] = [
     target: "student-class",
     title: "Put a student in a class",
     text: "Choose the exact class and arm (e.g. Obalende · JS1A). This puts them on that class's attendance, report card and promotion lists.",
+  },
+  {
+    target: "student-edit",
+    title: "Edit",
+    text: "Correct a student's details: name, admission number, gender, date of birth, phone, address or entry year. An admin's change goes to a super admin for approval (say why it's needed); a super admin's is saved straight away. While a change is waiting, the student shows “Change pending”.",
   },
   {
     target: "student-pin",
@@ -462,6 +467,32 @@ function scoresTour(role: StaffRole): TourStep[] {
       target: "scores-save",
       title: "Save",
       text: "Saves this subject's marks. If you switch subject, class or term with marks not saved, you'll be asked first.",
+    },
+  ];
+}
+
+function approvalsTour(role: StaffRole): TourStep[] {
+  const decides = isSuperAdmin(role);
+  return [
+    {
+      title: "Approvals",
+      text: decides
+        ? "Record edits and exam deletions made by admins wait here for you. Nothing is changed until you approve it."
+        : "Changes you ask for wait here for a super admin. Nothing is changed until they approve it.",
+    },
+    {
+      target: "approvals-records",
+      title: "Record changes",
+      text: decides
+        ? "Each request shows the record, every field's old and new value, the reason and who asked. Approve saves it straight away; Reject leaves the record as it is. If the record was changed again after the request was made, it isn't applied, so nothing newer is overwritten."
+        : "Each of your requests, with the old and new values and whether it's waiting, approved or rejected.",
+    },
+    {
+      target: "exams-approvals",
+      title: "Exam deletions",
+      text: decides
+        ? "Requests to delete someone else's exam or question, with the reason given. Approve deletes it; Reject keeps it."
+        : "Your requests to delete someone else's exam or question, and what was decided.",
     },
   ];
 }
@@ -611,8 +642,8 @@ function teamTour(role: StaffRole): TourStep[] {
     },
     {
       target: "team-rename",
-      title: "Edit name",
-      text: "Fix a misspelt name. Report cards they sign from now on use the new name. Ones already signed keep the name they were signed with.",
+      title: "Edit details",
+      text: "Correct a staff member's name or email. The email is how they sign in, so that changes too. An admin's change goes to a super admin for approval; a super admin's is saved straight away. Report cards already signed keep the name they were signed with.",
     },
     {
       target: "team-password",
@@ -637,7 +668,8 @@ export type StaffTab =
   | "attendance"
   | "reports"
   | "promotion"
-  | "team";
+  | "team"
+  | "approvals";
 
 /** The "How this tab works" tour for each staff tab. */
 export function staffTabTour(tab: StaffTab, role: StaffRole): TourStep[] {
@@ -662,5 +694,7 @@ export function staffTabTour(tab: StaffTab, role: StaffRole): TourStep[] {
       return PROMOTION_TOUR;
     case "team":
       return teamTour(role);
+    case "approvals":
+      return approvalsTour(role);
   }
 }

@@ -2,6 +2,8 @@
 
 import { useCallback, useState } from "react";
 import { ApiError, sendJson, useApi, useInvalidate } from "@/lib/client/api";
+import type { ChangeRequest } from "@/lib/recordChanges";
+import EditRecordDialog from "./EditRecordDialog";
 import { pageCount, pageRange } from "@/lib/paging";
 import { isSuperAdmin, ROLE_LABELS } from "@/lib/roles";
 import type { SignedInStaff, Staff, StaffRole } from "@/lib/types";
@@ -25,7 +27,12 @@ export default function TeamPanel({
   const [busyId, setBusyId] = useState("");
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
-  const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
+  const [editing, setEditing] = useState<Staff | null>(null);
+  const [notice, setNotice] = useState("");
+  const pendingQ = useApi<{ requests: ChangeRequest[] }>("/api/change-requests?pending=1", onUnauthorized);
+  const pendingFor = new Set(
+    (pendingQ.data?.requests ?? []).filter((r) => r.recordType === "staff" && r.status === "pending").map((r) => r.recordId)
+  );
   const [error, setError] = useState("");
   const [newPassword, setNewPassword] = useState<{ fullName: string; email: string; password: string } | null>(null);
   const [copied, setCopied] = useState(false);
@@ -105,25 +112,6 @@ export default function TeamPanel({
     }
   }
 
-  async function saveName(s: Staff) {
-    const name = renaming?.name.trim() ?? "";
-    if (name.length < 2) return setError("Enter the staff member's name");
-    if (name === s.fullName) return setRenaming(null);
-    const ok = await confirm({
-      title: "Change this name?",
-      message: (
-        <>
-          “{s.fullName}” becomes “{name}” everywhere in the portal. Report comments they have already signed keep
-          the name they were signed with.
-        </>
-      ),
-      confirmLabel: "Change name",
-    });
-    if (!ok) return;
-    await patch(s, { fullName: name });
-    setRenaming(null);
-  }
-
   async function changeRole(s: Staff, role: Staff["role"]) {
     if (role === s.role) return;
     const ok = await confirm({
@@ -143,6 +131,27 @@ export default function TeamPanel({
   return (
     <div className="grid gap-8 xl:grid-cols-[300px_1fr]">
       {dialog}
+      {editing && (
+        <EditRecordDialog
+          recordType="staff"
+          recordId={editing.id}
+          title={`Edit ${editing.fullName}`}
+          initial={{ fullName: editing.fullName, email: editing.email }}
+          superAdmin={isSuperAdmin(me.role)}
+          onClose={() => setEditing(null)}
+          onUnauthorized={onUnauthorized}
+          onDone={(applied) => {
+            setNotice(
+              applied
+                ? `${editing.fullName}'s details are saved. Report cards they already signed keep the name they were signed with.`
+                : `Change to ${editing.fullName} sent to a super admin for approval.`
+            );
+            setEditing(null);
+            invalidate("/api/change-requests");
+            load();
+          }}
+        />
+      )}
       <AddStaff roleChoices={roleChoices} onAdded={showNewest} onUnauthorized={onUnauthorized} />
 
       {/* min-w-0 lets the table's overflow-x-auto actually scroll instead of
@@ -160,6 +169,9 @@ export default function TeamPanel({
           data-tour="team-search"
           className="mt-4 w-full rounded-btn border border-smoke px-3 py-2.5 text-sm outline-none focus:border-brand-navy sm:max-w-sm"
         />
+        {notice && (
+          <p className="mt-3 rounded-card border border-brand-green bg-brand-green/10 px-4 py-3 text-sm font-semibold text-ink">{notice}</p>
+        )}
         {newPassword && (
           <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-card border border-brand-green bg-brand-green/10 px-4 py-3">
             <p className="text-sm text-ink">
@@ -206,35 +218,8 @@ export default function TeamPanel({
                   return (
                     <tr key={s.id} className="border-b border-smoke last:border-0">
                       <td className="px-4 py-3 font-semibold">
-                        {renaming?.id === s.id ? (
-                          <form
-                            className="flex items-center gap-2"
-                            onSubmit={(e) => {
-                              e.preventDefault();
-                              saveName(s);
-                            }}
-                          >
-                            <input
-                              autoFocus
-                              value={renaming.name}
-                              onChange={(e) => setRenaming({ id: s.id, name: e.target.value })}
-                              onKeyDown={(e) => e.key === "Escape" && setRenaming(null)}
-                              aria-label={`New name for ${s.fullName}`}
-                              className="w-full min-w-[160px] rounded-btn border border-smoke px-2 py-1 text-sm font-normal outline-none focus:border-brand-navy"
-                            />
-                            <button type="submit" disabled={busyId === s.id} className="cursor-pointer text-[13px] font-semibold text-brand-navy hover:underline">
-                              Save
-                            </button>
-                            <button type="button" onClick={() => setRenaming(null)} className="cursor-pointer text-[13px] font-semibold text-graphite hover:underline">
-                              Cancel
-                            </button>
-                          </form>
-                        ) : (
-                          <>
-                            {s.fullName}
-                            {isSelf && <span className="ml-2 text-[12px] text-pewter">(you)</span>}
-                          </>
-                        )}
+                        {s.fullName}
+                        {isSelf && <span className="ml-2 text-[12px] text-pewter">(you)</span>}
                       </td>
                       <td className="px-4 py-3">{s.email}</td>
                       <td className="px-4 py-3">
@@ -270,17 +255,22 @@ export default function TeamPanel({
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex gap-3 whitespace-nowrap">
-                          {!locked && renaming?.id !== s.id && (
-                            <button
-                              type="button"
-                              disabled={busyId === s.id}
-                              data-tour="team-rename"
-                              onClick={() => setRenaming({ id: s.id, name: s.fullName })}
-                              className="cursor-pointer text-[13px] font-semibold text-brand-navy hover:underline disabled:opacity-50"
-                            >
-                              Edit name
-                            </button>
-                          )}
+                          {!locked &&
+                            (pendingFor.has(s.id) ? (
+                              <span className="rounded-btn bg-brand-gold/30 px-1.5 py-0.5 text-[12px] font-semibold text-ink" title="Waiting for a super admin">
+                                Change pending
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={busyId === s.id}
+                                data-tour="team-rename"
+                                onClick={() => setEditing(s)}
+                                className="cursor-pointer text-[13px] font-semibold text-brand-navy hover:underline disabled:opacity-50"
+                              >
+                                Edit details
+                              </button>
+                            ))}
                           {!isSelf && !locked && (
                             <button
                               type="button"

@@ -17,9 +17,10 @@ import ReportCardsPanel from "@/components/portal/staff/ReportCardsPanel";
 import PromotionPanel from "@/components/portal/staff/PromotionPanel";
 import SessionsPanel from "@/components/portal/staff/SessionsPanel";
 import TermScoresPanel from "@/components/portal/staff/TermScoresPanel";
+import ApprovalsTab from "@/components/portal/staff/ApprovalsTab";
 import GuideTour from "@/components/portal/GuideTour";
 import { STAFF_SIGNIN_TOUR, staffDashboardTour, staffTabTour, type StaffTab } from "@/lib/tours";
-import { isAdmin, ROLE_LABELS } from "@/lib/roles";
+import { isAdmin, isSuperAdmin, ROLE_LABELS } from "@/lib/roles";
 import { apiKey, SIGNED_IN, useApi } from "@/lib/client/api";
 import type { SignedInStaff, Term } from "@/lib/types";
 
@@ -61,6 +62,16 @@ function useStaff() {
   return { me, loading: isPending, refresh, signedIn, signOut, signingOut };
 }
 
+/** How many requests are waiting for this super admin's decision (0 for everyone else). */
+function useWaitingApprovals(me: Me): number {
+  const decides = me !== null && isSuperAdmin(me.role);
+  const changes = useApi<{ requests: { status: string }[] }>(decides ? "/api/change-requests?pending=1" : null);
+  const deletions = useApi<{ requests: { status: string }[] }>(decides ? "/api/deletion-requests" : null);
+  if (!decides) return 0;
+  const pending = (q: typeof changes) => (q.data?.requests ?? []).filter((r) => r.status === "pending").length;
+  return pending(changes) + pending(deletions);
+}
+
 const TAB_KEY = "jdc-staff-tab";
 
 /** The open tab, kept for this browser tab so a page reload lands back on it. */
@@ -85,10 +96,10 @@ function useTab(): [Tab, (t: Tab) => void] {
   return [tab, setTab];
 }
 
-const ADMIN_TABS: Tab[] = ["classes", "sessions", "team"];
+const ADMIN_TABS: Tab[] = ["classes", "sessions", "team", "approvals"];
 
 // Bump a tab's number when its tour changes enough that everyone should see it again.
-const TAB_TOUR_VERSION: Partial<Record<Tab, number>> = { students: 3, exams: 2, team: 2 };
+const TAB_TOUR_VERSION: Partial<Record<Tab, number>> = { students: 4, exams: 3, team: 3 };
 
 const TABS: [Tab, string][] = [
   ["exams", "Exams & questions"],
@@ -101,6 +112,7 @@ const TABS: [Tab, string][] = [
   ["reports", "Report cards"],
   ["promotion", "Promotion"],
   ["team", "Staff accounts"],
+  ["approvals", "Approvals"],
 ];
 
 export default function StaffPage() {
@@ -108,6 +120,7 @@ export default function StaffPage() {
   const [chosenTab, setTab] = useTab();
   // A teacher never lands on an admin-only tab, even one remembered from an admin's visit.
   const tab: Tab = me && !isAdmin(me.role) && ADMIN_TABS.includes(chosenTab) ? "exams" : chosenTab;
+  const waiting = useWaitingApprovals(me);
 
   return (
     <>
@@ -135,8 +148,8 @@ export default function StaffPage() {
                   {me ? (
                     <GuideTour
                       key={me.role}
-                      // v2 for admins: shows them where Sessions & terms moved to.
-                      id={`staff-dashboard-${me.role}-${isAdmin(me.role) ? "v2" : "v1"}`}
+                      // Admins: v2 showed where Sessions & terms moved to, v3 the Approvals tab.
+                      id={`staff-dashboard-${me.role}-${isAdmin(me.role) ? "v3" : "v1"}`}
                       steps={staffDashboardTour(me.role)}
                     />
                   ) : (
@@ -172,6 +185,11 @@ export default function StaffPage() {
                       }`}
                     >
                       {label}
+                      {key === "approvals" && waiting > 0 && (
+                        <span className="ml-1.5 rounded-btn bg-brand-red px-1.5 py-0.5 text-[11px] font-bold text-white" aria-label={`${waiting} waiting`}>
+                          {waiting}
+                        </span>
+                      )}
                     </button>
                   )
                 )}
@@ -218,7 +236,7 @@ function TabPanel({ tab, me, onUnauthorized }: { tab: Tab; me: SignedInStaff; on
     case "results":
       return <ResultsPanel me={me} onUnauthorized={onUnauthorized} />;
     case "students":
-      return <RosterPanel onUnauthorized={onUnauthorized} />;
+      return <RosterPanel me={me} onUnauthorized={onUnauthorized} />;
     case "classes":
       return <ClassesPanel onUnauthorized={onUnauthorized} />;
     case "sessions":
@@ -233,6 +251,8 @@ function TabPanel({ tab, me, onUnauthorized }: { tab: Tab; me: SignedInStaff; on
       return <PromotionPanel me={me} onUnauthorized={onUnauthorized} />;
     case "team":
       return <TeamPanel me={me} onUnauthorized={onUnauthorized} />;
+    case "approvals":
+      return <ApprovalsTab me={me} onUnauthorized={onUnauthorized} />;
   }
 }
 

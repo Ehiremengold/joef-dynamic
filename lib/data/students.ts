@@ -133,17 +133,51 @@ export async function nextAdmissionNumber(): Promise<string> {
   return `${ADMISSION_PREFIX}${String(last + 1).padStart(5, "0")}`;
 }
 
-const nameWords = (s: string) => s.toLowerCase().replace(/[^a-z]+/g, " ").trim().split(" ").filter((w) => w.length >= 3);
+/**
+ * How alike two names are, in words. Spelling in the school's records
+ * varies ("King-David" / "King David" / "KingDavid", "Adenyi" / "Adeniyi"),
+ * so two words count as the same when they match once spaces and hyphens
+ * are ignored, or when a longer word is one letter off.
+ */
+export function sharedNameWords(a: string, b: string): number {
+  const words = (s: string) => s.toLowerCase().replace(/[^a-z\s-]+/g, " ").split(/[\s-]+/).filter(Boolean);
+  // Each word, plus each pair of neighbours joined ("king"+"david" = "kingdavid"),
+  // remembering which of the name's words each token stands for.
+  const tokens = (w: string[]) => [
+    ...w.map((x, i) => ({ text: x, covers: [i] })).filter((t) => t.text.length >= 3),
+    ...w.slice(1).map((x, i) => ({ text: w[i] + x, covers: [i, i + 1] })),
+  ];
+  const close = (x: string, y: string) => x === y || (Math.min(x.length, y.length) >= 5 && editDistanceAtMostOne(x, y));
+  const theirs = tokens(words(b)).map((t) => t.text);
+  const covered = new Set<number>();
+  for (const t of tokens(words(a))) if (theirs.some((u) => close(t.text, u))) t.covers.forEach((i) => covered.add(i));
+  // How many of the first name's words are accounted for in the second.
+  return covered.size;
+}
+
+function editDistanceAtMostOne(a: string, b: string): boolean {
+  if (Math.abs(a.length - b.length) > 1) return false;
+  let i = 0, j = 0, edits = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) { i++; j++; continue; }
+    if (++edits > 1) return false;
+    if (a.length > b.length) i++;
+    else if (b.length > a.length) j++;
+    else { i++; j++; }
+  }
+  return edits + (a.length - i) + (b.length - j) <= 1;
+}
 
 /**
  * Students whose name shares at least two words with this one (or all of
- * it, for a one- or two-word name), so "Baniru Jason Darasimi" finds
- * "Banire Jason Darasimi". Used to warn before adding someone twice.
+ * it, for a one-word name), allowing for the spelling differences above, so
+ * "Adenyi KingDavid Adejare" finds "Adeniyi King David Adejare". Used to warn
+ * before adding someone twice.
  */
 export async function findSimilarStudents(fullName: string): Promise<Student[]> {
-  const words = new Set(nameWords(fullName));
-  if (words.size === 0) return [];
-  const need = Math.min(2, words.size);
+  // Two matching words, or the whole name when it is a single word.
+  const need = Math.min(2, sharedNameWords(fullName, fullName));
+  if (need === 0) return [];
   const supa = serviceClient();
   const matches: Row[] = [];
   for (let from = 0; ; from += 1000) {
@@ -153,10 +187,7 @@ export async function findSimilarStudents(fullName: string): Promise<Student[]> 
       .order("id")
       .range(from, from + 999);
     if (error) throw new Error(error.message);
-    for (const r of data ?? []) {
-      const shared = new Set(nameWords(r.full_name as string).filter((w) => words.has(w))).size;
-      if (shared >= need) matches.push(r);
-    }
+    for (const r of data ?? []) if (sharedNameWords(fullName, r.full_name as string) >= need) matches.push(r);
     if (!data || data.length < 1000) break;
   }
   return matches.slice(0, 5).map(mapStudent);

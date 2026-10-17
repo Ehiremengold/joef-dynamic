@@ -95,6 +95,14 @@ export async function PATCH(req: NextRequest) {
     const patch: { fullName?: string; role?: StaffRole; active?: boolean } = {};
 
     if (body.fullName !== undefined) {
+      // Record details go through approval (see /api/change-requests); only
+      // a super admin, whose own edits need none, may rename directly.
+      if (!isSuperAdmin(admin.role)) {
+        return NextResponse.json(
+          { error: "Name changes need a super admin's approval. Use Edit details to send one." },
+          { status: 403 }
+        );
+      }
       const fullName = String(body.fullName).trim();
       if (fullName.length < 2) {
         return NextResponse.json(

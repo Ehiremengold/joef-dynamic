@@ -3,7 +3,10 @@
 import { classLabel } from "@/lib/classes";
 import { useEffect, useState } from "react";
 import { EDITABLE, useApi, useInvalidate } from "@/lib/client/api";
-import { CLASSES, type AcademicSession, type Campus, type Class, type Student, type Subject, type Term } from "@/lib/types";
+import { isAdmin, isSuperAdmin } from "@/lib/roles";
+import type { ChangeRequest } from "@/lib/recordChanges";
+import { CLASSES, type AcademicSession, type Campus, type Class, type SignedInStaff, type Student, type Subject, type Term } from "@/lib/types";
+import EditRecordDialog from "./EditRecordDialog";
 import Pagination from "./Pagination";
 import { usePagedList } from "./usePagedList";
 import { useConfirm } from "./useConfirm";
@@ -72,10 +75,20 @@ function FilterSelect<T extends string>({
 
 
 export default function RosterPanel({
+  me,
   onUnauthorized,
 }: {
+  me: SignedInStaff;
   onUnauthorized: () => void;
 }) {
+  const admin = isAdmin(me.role);
+  const invalidate = useInvalidate();
+  const [editing, setEditing] = useState<Student | null>(null);
+  // Students with an edit waiting for a super admin, so it isn't asked for twice.
+  const pending = useApi<{ requests: ChangeRequest[] }>(admin ? "/api/change-requests?pending=1" : null, onUnauthorized);
+  const pendingFor = new Set(
+    (pending.data?.requests ?? []).filter((r) => r.recordType === "student" && r.status === "pending").map((r) => r.recordId)
+  );
   const { confirm, dialog } = useConfirm();
   const [name, setName] = useState("");
   const [filters, setFilters] = useState(NO_FILTERS);
@@ -165,7 +178,7 @@ export default function RosterPanel({
             <p className="text-sm font-semibold text-ink">
               {notice.text}{" "}
               {notice.pin && <span className="font-display text-lg text-brand-green">{notice.pin}</span>}
-              <span className="ml-2 font-normal text-graphite">Write this down. It won&rsquo;t be shown again.</span>
+              {notice.pin && <span className="ml-2 font-normal text-graphite">Write this down. It won&rsquo;t be shown again.</span>}
             </p>
             <button
               type="button"
@@ -324,6 +337,21 @@ export default function RosterPanel({
                     </td>
                     <td className={CELL}>
                       <div className="flex gap-3 whitespace-nowrap">
+                        {admin &&
+                          (pendingFor.has(s.id) ? (
+                            <span className="rounded-btn bg-brand-gold/30 px-1.5 py-0.5 text-[12px] font-semibold text-ink" title="Waiting for a super admin">
+                              Change pending
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              data-tour="student-edit"
+                              onClick={() => setEditing(s)}
+                              className="cursor-pointer text-[13px] font-semibold text-brand-navy hover:underline"
+                            >
+                              Edit
+                            </button>
+                          ))}
                         <button
                           type="button"
                           data-tour="student-pin"
@@ -370,6 +398,34 @@ export default function RosterPanel({
         <Pagination page={page} total={total} onPage={setPage} />
       </div>
 
+      {editing && (
+        <EditRecordDialog
+          recordType="student"
+          recordId={editing.id}
+          title={`Edit ${editing.fullName}`}
+          initial={{
+            fullName: editing.fullName,
+            admissionNumber: editing.admissionNumber,
+            gender: editing.gender,
+            dateOfBirth: editing.dateOfBirth,
+            phone: editing.phone,
+            address: editing.address,
+            entryYear: editing.entryYear,
+          }}
+          superAdmin={isSuperAdmin(me.role)}
+          onClose={() => setEditing(null)}
+          onUnauthorized={onUnauthorized}
+          onDone={(applied) => {
+            setNotice({
+              text: applied
+                ? `${editing.fullName}'s details are saved.`
+                : `Change to ${editing.fullName} sent to a super admin for approval.`,
+            });
+            setEditing(null);
+            invalidate("/api/students", "/api/change-requests");
+          }}
+        />
+      )}
       {subjectsFor && (
         <SubjectExemptions
           student={subjectsFor}
