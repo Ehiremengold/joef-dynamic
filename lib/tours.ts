@@ -247,19 +247,25 @@ function examsTour(role: StaffRole): TourStep[] {
       text: "Give it a title (e.g. First Term Mathematics), choose Class test for a class or Common entrance for applicants, pick the class and how many minutes students get. New exams start hidden, so students can't see them until you're ready.",
     },
     {
-      unless: "exams-list",
+      // The filters only show once there is an exam, so this step is for an empty tab.
+      unless: "exams-filter",
       title: "Your exams will appear here",
-      text: "Each exam you create gets a card with: an Open/Hidden switch, Questions (paste a whole set from Word or add one at a time), Sittings (who is taking it now, extra time, retakes), Download results and Delete. Create one, then press “How this tab works” again to see each button.",
+      text: "Each exam you create gets a card with: a switch that shows whether students can see it (Open, Scheduled or Hidden), Date & time, Questions (paste a whole set from Word or add one at a time), Sittings (who is taking it now, extra time, retakes), Download results and Delete. Create one, then press “How this tab works” again to see each button.",
+    },
+    {
+      target: "exams-filter",
+      title: "Find an exam",
+      text: "Type part of a title to search, or narrow the list by class (or Common entrance) and by status: open to students now, scheduled for later, hidden, or past its closing time. The list shows 20 exams a page.",
     },
     {
       target: "exams-list",
       title: "All exams",
-      text: "Every exam, newest first. The badge shows the class (or Entrance), with the number of questions and the time allowed.",
+      text: "The exams that match your search and filters, newest first, 20 a page. The badge shows the class (or Entrance), with the number of questions and the time allowed.",
     },
     {
       target: "exam-open",
-      title: "Open or hidden",
-      text: "Tick this to open the test to students. Untick it to hide it again. Only open a test once its questions are ready.",
+      title: "Open, scheduled or hidden",
+      text: "Ticked means students can see the test: Open if they can start it now, Scheduled if it has a date and time still to come, Closed once its closing time has passed. A test with no questions stays out of students' sight even when ticked. Saving a date and time ticks it for you. Untick it to hide a test or call it off. Only switch a test on once its questions are ready.",
     },
     {
       target: "exam-questions",
@@ -269,7 +275,7 @@ function examsTour(role: StaffRole): TourStep[] {
     {
       target: "exam-schedule",
       title: "Date & time",
-      text: "Set when the exam takes place, e.g. 12 Oct 2026 · 10:00 AM (Lagos time). Once the exam is switched on, students see it under “Coming up” with that date and time, and the Start button appears by itself when it arrives. Without a date and time, the Open switch alone decides.",
+      text: "Set when the exam takes place, e.g. 12 Oct 2026 · 10:00 AM (Lagos time). Saving it is all you need: students see the test under “Coming up” straight away, and the Start button appears by itself at that time. Without a date and time, the switch alone decides.",
     },
     {
       target: "exam-sittings",

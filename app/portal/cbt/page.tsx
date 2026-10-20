@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { apiKey, SIGNED_IN, useApi, useInvalidate } from "@/lib/client/api";
 import { formatExamTime } from "@/lib/lagosTime";
@@ -188,13 +188,29 @@ function StudentLogin({ onSignedIn }: { onSignedIn: () => void }) {
 function TakeTest({ me, onExpired }: { me: NonNullable<Me>; onExpired: () => void }) {
   const [step, setStep] = useState<"pick" | "test" | "done">("pick");
   const invalidate = useInvalidate();
-  const examsQ = useApi<{ exams: PublicExam[]; upcoming?: Upcoming[] }>("/api/exams?type=class", onExpired, {
+  const examsQ = useApi<{ exams: PublicExam[]; upcoming?: Upcoming[]; serverNow?: string }>("/api/exams?type=class", onExpired, {
     // A test with a date and time should appear by itself when the time comes.
     refetchInterval: 60_000,
   });
   const exams = examsQ.data?.exams ?? [];
   const upcoming = examsQ.data?.upcoming ?? [];
   const loading = examsQ.isPending;
+  // ...and right on time, not up to a minute late: ask again a second after
+  // the next one opens, timed by the server's clock (a device's own clock can
+  // be minutes out). Until the server lists it as open, keep asking every few
+  // seconds; after two minutes the minute check above takes over.
+  const nextOpens = upcoming.length ? Math.min(...upcoming.map((u) => Date.parse(u.opensAt))) : null;
+  const serverNow = examsQ.data?.serverNow;
+  const { refetch, dataUpdatedAt } = examsQ;
+  useEffect(() => {
+    if (nextOpens === null || !serverNow) return;
+    const clockOffset = Date.parse(serverNow) - dataUpdatedAt;
+    const wait = nextOpens - (Date.now() + clockOffset) + 1000;
+    // Further off than the minute check reaches: that will get there first.
+    if (wait > 24 * 60 * 60_000 || wait < -2 * 60_000) return;
+    const t = setTimeout(() => void refetch(), wait > 0 ? wait : 5000);
+    return () => clearTimeout(t);
+  }, [nextOpens, serverNow, dataUpdatedAt, refetch]);
   const [chosenExam, setExamId] = useState("");
   const [result, setResult] = useState<SubmittedResult | null>(null);
   // With only one test open, it is already chosen.

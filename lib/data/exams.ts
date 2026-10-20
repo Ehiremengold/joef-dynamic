@@ -1,5 +1,6 @@
 import "server-only";
 import { serviceClient } from "@/lib/supabase/server";
+import { examStatus } from "@/lib/examSchedule";
 import type {
   ClassName,
   Exam,
@@ -46,16 +47,12 @@ export function toPublicExam(exam: Exam): PublicExam {
 
 /** Not yet open, but switched on and scheduled: students see it coming up. */
 export function isUpcoming(exam: Exam): boolean {
-  return exam.active && exam.opensAt !== null && Date.now() < Date.parse(exam.opensAt);
+  return examStatus(exam) === "scheduled";
 }
 
 /** Is the exam open right now (active + within any scheduled window)? */
 export function isOpen(exam: Exam): boolean {
-  if (!exam.active) return false;
-  const now = Date.now();
-  if (exam.opensAt && now < Date.parse(exam.opensAt)) return false;
-  if (exam.closesAt && now > Date.parse(exam.closesAt)) return false;
-  return true;
+  return examStatus(exam) === "open";
 }
 
 const EXAM_COLUMNS =

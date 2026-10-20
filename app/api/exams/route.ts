@@ -16,7 +16,8 @@ import {
  * - Staff: full exams (incl. answers, inactive) for management.
  * - Taker (student/candidate session): OPEN exams, answers stripped, scoped
  *   to what they're allowed to sit; plus `upcoming`, scheduled ones that
- *   haven't opened yet (title and times only, no questions).
+ *   haven't opened yet (title and times only, no questions), and
+ *   `serverNow`, the server's clock.
  */
 export async function GET(req: NextRequest) {
   try {
@@ -56,7 +57,8 @@ export async function GET(req: NextRequest) {
         closesAt: e.closesAt,
         questionCount: e.questions.length,
       }));
-    return NextResponse.json({ exams: open.map(toPublicExam), upcoming });
+    // The server's clock, so a device whose clock is off still knows when the next test opens.
+    return NextResponse.json({ exams: open.map(toPublicExam), upcoming, serverNow: new Date().toISOString() });
   } catch (e) {
     return errorResponse(e);
   }

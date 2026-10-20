@@ -3,6 +3,7 @@ import { errorResponse } from "@/lib/api";
 import { AuthError, currentStaff, requireStaff } from "@/lib/auth/staff";
 import { examAccess } from "@/lib/roles";
 import { getTakerSession } from "@/lib/auth/session";
+import { activeAfterScheduleChange } from "@/lib/examSchedule";
 import {
   deleteExam,
   getExam,
@@ -115,6 +116,15 @@ export async function PUT(req: NextRequest, { params }: Params) {
     if (opensAt === false || closesAt === false) {
       return NextResponse.json({ error: "Enter a valid date and time" }, { status: 400 });
     }
+    // A new date and time switches the test on (below), so one already past
+    // would open it this minute while the teacher thinks it opens later.
+    // A couple of minutes' grace: the picker only goes to the minute.
+    if (opensAt && opensAt !== exam.opensAt && Date.parse(opensAt) < Date.now() - 2 * 60_000) {
+      return NextResponse.json(
+        { error: "That date and time has already passed. Pick one still to come, or tick the switch to open the test now." },
+        { status: 400 }
+      );
+    }
     const effectiveOpens = opensAt === undefined ? exam.opensAt : opensAt;
     const effectiveCloses = closesAt === undefined ? exam.closesAt : closesAt;
     if (effectiveOpens && effectiveCloses && Date.parse(effectiveCloses) <= Date.parse(effectiveOpens)) {
@@ -129,7 +139,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
         body.durationMins !== undefined
           ? Math.max(1, Math.min(180, Number(body.durationMins) || exam.durationMins))
           : undefined,
-      active: typeof body.active === "boolean" ? body.active : undefined,
+      active: typeof body.active === "boolean" ? body.active : activeAfterScheduleChange(exam, opensAt),
     });
 
     const updated = await getExam(id);

@@ -1,17 +1,49 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
 import { useApi, useInvalidate } from "@/lib/client/api";
 import { formatExamTime, isoToLagosInput, lagosInputToIso } from "@/lib/lagosTime";
+import { examStatus, nextStatusChange, opensLater, type ExamStatus } from "@/lib/examSchedule";
+import { pageCount, pageRange } from "@/lib/paging";
 import { parseQuestions } from "@/lib/questionParser";
 import { examAccess, type ExamAccess } from "@/lib/roles";
 import { CLASSES, type Exam, type SignedInStaff } from "@/lib/types";
 import { useConfirm } from "./useConfirm";
 import EntranceAccess from "./EntranceAccess";
 import SendToScoresDialog from "./SendToScoresDialog";
+import Pagination from "./Pagination";
+import FilterSelect from "./FilterSelect";
 
 /** Cookie-authenticated fetch; calls onUnauthorized on a 401 so the shell re-checks. */
 type AuthFetch = (url: string, init?: RequestInit) => Promise<Response>;
+
+/** What the card's switch says for each status. */
+const SWITCH_LABEL: Record<ExamStatus, { label: string; className: string }> = {
+  hidden: { label: "Hidden", className: "text-pewter" },
+  scheduled: { label: "Scheduled", className: "text-brand-navy" },
+  open: { label: "Open", className: "text-brand-green" },
+  closed: { label: "Closed", className: "text-pewter" },
+};
+
+/**
+ * The time to judge the exams' status by. A test's status changes by the
+ * clock alone (a scheduled one opens), so the panel re-renders at the next
+ * such moment rather than showing "Scheduled" until the list reloads.
+ */
+function useStatusClock(exams: Exam[]): number {
+  const [, rerender] = useReducer((n: number) => n + 1, 0);
+  const now = Date.now();
+  const next = nextStatusChange(exams, now);
+  useEffect(() => {
+    if (next === null) return;
+    const wait = next - Date.now() + 500;
+    // setTimeout can't wait longer than ~24 days; the page won't be open that long anyway.
+    if (wait > 24 * 60 * 60_000) return;
+    const t = setTimeout(rerender, Math.max(wait, 0));
+    return () => clearTimeout(t);
+  }, [next]);
+  return now;
+}
 
 export default function ExamsPanel({
   me,
@@ -41,6 +73,28 @@ export default function ExamsPanel({
     [onUnauthorized]
   );
 
+  const now = useStatusClock(exams);
+  // "" means any; group is a class or "entrance", as the Students tab's class filter does.
+  const [filters, setFilters] = useState<{ query: string; group: string; status: ExamStatus | "" }>({ query: "", group: "", status: "" });
+  const [chosenPage, setPage] = useState(1);
+  // A new filter starts again from page one.
+  const setFilter = (patch: Partial<typeof filters>) => {
+    setFilters((f) => ({ ...f, ...patch }));
+    setPage(1);
+  };
+  // Filtered and paged here, not on the server like the Students tab: every
+  // exam is already loaded (and cached), and there are tens, not thousands.
+  const words = filters.query.toLowerCase().split(/\s+/).filter(Boolean);
+  const shown = exams.filter(
+    (e) =>
+      words.every((w) => e.title.toLowerCase().includes(w)) &&
+      (!filters.group || (filters.group === "entrance" ? e.type === "entrance" : e.type === "class" && e.className === filters.group)) &&
+      (!filters.status || examStatus(e, now) === filters.status)
+  );
+  // An exam deleted from the last page leaves it empty: show the one before.
+  const page = Math.min(chosenPage, pageCount(shown.length));
+  const { from, to } = pageRange(page);
+
   // An exam change can change results too (a deleted exam, a cleared score).
   const reload = useCallback(() => {
     invalidate("/api/exams", "/api/attempts");
@@ -61,15 +115,55 @@ export default function ExamsPanel({
             No exams yet. Create your first one on the left.
           </p>
         ) : (
-          <div data-tour="exams-list" className="mt-4 space-y-4">
-            {exams.map((exam) => (
-              <ExamCard key={exam.id} exam={exam} authFetch={authFetch} onChanged={reload}
-              access={examAccess(me, exam)}
-              onRequested={() => invalidate("/api/deletion-requests")}
-              onUnauthorized={onUnauthorized}
-            />
-            ))}
-          </div>
+          <>
+            <div data-tour="exams-filter" className="mt-4 space-y-3">
+              <input
+                type="text"
+                value={filters.query}
+                onChange={(e) => setFilter({ query: e.target.value })}
+                placeholder="Search by title"
+                aria-label="Search exams by title"
+                className="w-full rounded-btn border border-smoke px-3 py-2.5 text-sm outline-none focus:border-brand-navy"
+              />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <FilterSelect label="Class" value={filters.group} onChange={(group) => setFilter({ group })}>
+                  <option value="">All classes</option>
+                  {CLASSES.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                  <option value="entrance">Common entrance</option>
+                </FilterSelect>
+                <FilterSelect label="Status" value={filters.status} onChange={(status) => setFilter({ status })}>
+                  <option value="">Any status</option>
+                  <option value="open">Open to students now</option>
+                  <option value="scheduled">Scheduled (opens later)</option>
+                  <option value="hidden">Hidden</option>
+                  <option value="closed">Closed (past its closing time)</option>
+                </FilterSelect>
+              </div>
+              <p className="text-[13px] text-pewter">
+                {shown.length === exams.length
+                  ? `${exams.length} exam${exams.length === 1 ? "" : "s"}`
+                  : `${shown.length} of ${exams.length} exams match`}
+              </p>
+            </div>
+            {shown.length === 0 ? (
+              <p className="mt-4 rounded-card border border-smoke bg-white p-6 text-sm text-graphite">
+                No exams match. Try another class, status or title.
+              </p>
+            ) : (
+              <div data-tour="exams-list" className="mt-4 space-y-4">
+                {shown.slice(from, to + 1).map((exam) => (
+                  <ExamCard key={exam.id} exam={exam} now={now} authFetch={authFetch} onChanged={reload}
+                  access={examAccess(me, exam)}
+                  onRequested={() => invalidate("/api/deletion-requests")}
+                  onUnauthorized={onUnauthorized}
+                />
+                ))}
+              </div>
+            )}
+            <Pagination page={page} total={shown.length} onPage={setPage} />
+          </>
         )}
         </div>
       </div>
@@ -183,6 +277,7 @@ function CreateExam({
 
 function ExamCard({
   exam,
+  now,
   authFetch,
   onChanged,
   access,
@@ -190,6 +285,8 @@ function ExamCard({
   onUnauthorized,
 }: {
   exam: Exam;
+  /** The moment to judge its status by (see useStatusClock). */
+  now: number;
   authFetch: AuthFetch;
   onChanged: () => void;
   access: ExamAccess;
@@ -226,9 +323,10 @@ function ExamCard({
     onRequested();
   }
   const open = panel === "questions";
+  const status = examStatus(exam, now);
 
-  /** Save a change to the exam; resolves to whether it was saved. */
-  async function update(patch: Record<string, unknown>): Promise<boolean> {
+  /** Save a change to the exam; resolves to the exam as saved, or null if it wasn't. */
+  async function update(patch: Record<string, unknown>): Promise<Exam | null> {
     setBusy(true);
     setError("");
     try {
@@ -239,10 +337,10 @@ function ExamCard({
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "Update failed");
       onChanged();
-      return true;
+      return d.exam as Exam;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Update failed");
-      return false;
+      return null;
     } finally {
       setBusy(false);
     }
@@ -268,93 +366,97 @@ function ExamCard({
   return (
     <div className="rounded-card border border-smoke bg-white">
       {dialog}
-      <div className="flex flex-wrap items-center gap-3 p-5">
-        <span
-          className={`rounded-btn px-2 py-0.5 text-xs font-bold uppercase tracking-wide ${
-            exam.type === "entrance" ? "bg-brand-gold text-ink" : "bg-brand-navy text-white"
-          }`}
-        >
-          {exam.type === "entrance" ? "Entrance" : exam.className}
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="truncate font-display font-bold tracking-tight">{exam.title}</p>
-          <p className="text-[13px] text-graphite">
-            {exam.questions.length} question{exam.questions.length === 1 ? "" : "s"} · {exam.durationMins} mins
-          </p>
-          <ScheduleStatus exam={exam} />
-        </div>
-        {access === "view" && (
-          <span data-tour="exam-viewonly" className="rounded-btn bg-mist px-2 py-0.5 text-xs font-semibold text-graphite">View only</span>
-        )}
-        <label data-tour="exam-open" className="flex cursor-pointer items-center gap-2 text-sm font-semibold">
-          <input
-            type="checkbox"
-            checked={exam.active}
-            disabled={busy || access === "view"}
-            onChange={(e) => update({ active: e.target.checked })}
-            className="h-4 w-4 cursor-pointer accent-brand-green"
-          />
-          {exam.active ? (
-            <span className="text-brand-green">Open</span>
-          ) : (
-            <span className="text-pewter">Hidden</span>
+      <div className="p-5">
+        <div className="flex items-start gap-3">
+          <span
+            className={`rounded-btn px-2 py-0.5 text-xs font-bold uppercase tracking-wide ${
+              exam.type === "entrance" ? "bg-brand-gold text-ink" : "bg-brand-navy text-white"
+            }`}
+          >
+            {exam.type === "entrance" ? "Entrance" : exam.className}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-display font-bold tracking-tight">{exam.title}</p>
+            <p className="text-[13px] text-graphite">
+              {exam.questions.length} question{exam.questions.length === 1 ? "" : "s"} · {exam.durationMins} mins
+            </p>
+            <ScheduleStatus exam={exam} now={now} />
+            {exam.active && exam.questions.length === 0 && (
+              <p className="text-[13px] font-semibold text-brand-red">No questions yet, so students can&rsquo;t see it.</p>
+            )}
+          </div>
+          {access === "view" && (
+            <span data-tour="exam-viewonly" className="rounded-btn bg-mist px-2 py-0.5 text-xs font-semibold text-graphite">View only</span>
           )}
-        </label>
-        <button
-          type="button"
-          data-tour="exam-questions"
-          onClick={() => setPanel(open ? "none" : "questions")}
-          className="cursor-pointer rounded-btn border border-ink px-3 py-1.5 text-sm font-semibold transition-colors duration-200 hover:bg-ink hover:text-white"
-        >
-          {open ? "Close" : "Questions"}
-        </button>
-        <button
-          type="button"
-          data-tour="exam-schedule"
-          onClick={() => setPanel(panel === "schedule" ? "none" : "schedule")}
-          className="cursor-pointer rounded-btn border border-ink px-3 py-1.5 text-sm font-semibold transition-colors duration-200 hover:bg-ink hover:text-white"
-        >
-          {panel === "schedule" ? "Close" : "Date & time"}
-        </button>
-        <button
-          type="button"
-          data-tour="exam-sittings"
-          onClick={() => setPanel(panel === "sittings" ? "none" : "sittings")}
-          className="cursor-pointer rounded-btn border border-ink px-3 py-1.5 text-sm font-semibold transition-colors duration-200 hover:bg-ink hover:text-white"
-        >
-          {panel === "sittings" ? "Close" : "Sittings"}
-        </button>
-        {exam.type === "class" && (
+          <label data-tour="exam-open" className="flex cursor-pointer items-center gap-2 text-sm font-semibold">
+            <input
+              type="checkbox"
+              checked={exam.active}
+              disabled={busy || access === "view"}
+              onChange={(e) => update({ active: e.target.checked })}
+              className="h-4 w-4 cursor-pointer accent-brand-green"
+            />
+            <span className={SWITCH_LABEL[status].className}>{SWITCH_LABEL[status].label}</span>
+          </label>
+        </div>
+        {/* The buttons get a row of their own, so the title keeps the card's full width. */}
+        <div className="mt-4 flex flex-wrap gap-2">
           <button
             type="button"
-            data-tour="exam-send"
-            onClick={() => setSending(true)}
+            data-tour="exam-questions"
+            onClick={() => setPanel(open ? "none" : "questions")}
+            className="cursor-pointer rounded-btn border border-ink px-3 py-1.5 text-sm font-semibold transition-colors duration-200 hover:bg-ink hover:text-white"
+          >
+            {open ? "Close" : "Questions"}
+          </button>
+          <button
+            type="button"
+            data-tour="exam-schedule"
+            onClick={() => setPanel(panel === "schedule" ? "none" : "schedule")}
+            className="cursor-pointer rounded-btn border border-ink px-3 py-1.5 text-sm font-semibold transition-colors duration-200 hover:bg-ink hover:text-white"
+          >
+            {panel === "schedule" ? "Close" : "Date & time"}
+          </button>
+          <button
+            type="button"
+            data-tour="exam-sittings"
+            onClick={() => setPanel(panel === "sittings" ? "none" : "sittings")}
+            className="cursor-pointer rounded-btn border border-ink px-3 py-1.5 text-sm font-semibold transition-colors duration-200 hover:bg-ink hover:text-white"
+          >
+            {panel === "sittings" ? "Close" : "Sittings"}
+          </button>
+          {exam.type === "class" && (
+            <button
+              type="button"
+              data-tour="exam-send"
+              onClick={() => setSending(true)}
+              className="cursor-pointer rounded-btn border border-brand-navy px-3 py-1.5 text-sm font-semibold text-brand-navy transition-colors duration-200 hover:bg-brand-navy hover:text-white"
+            >
+              Send to Term scores
+            </button>
+          )}
+          <a
+            data-tour="exam-download"
+            href={`/api/exams/${exam.id}/results-pdf`}
+            target="_blank"
+            rel="noopener noreferrer"
             className="cursor-pointer rounded-btn border border-brand-navy px-3 py-1.5 text-sm font-semibold text-brand-navy transition-colors duration-200 hover:bg-brand-navy hover:text-white"
           >
-            Send to Term scores
-          </button>
-        )}
-        <a
-          data-tour="exam-download"
-          href={`/api/exams/${exam.id}/results-pdf`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="cursor-pointer rounded-btn border border-brand-navy px-3 py-1.5 text-sm font-semibold text-brand-navy transition-colors duration-200 hover:bg-brand-navy hover:text-white"
-        >
-          Download results
-        </a>
-        {access !== "view" && (
-          <button
-            type="button"
-            data-tour="exam-delete"
-            onClick={() => (access === "manage" ? remove() : requestDeletion())}
-            disabled={busy}
-            aria-label={`${access === "manage" ? "Delete" : "Request deletion of"} ${exam.title}`}
-            className="cursor-pointer rounded-btn border border-brand-red px-3 py-1.5 text-sm font-semibold text-brand-red transition-colors duration-200 hover:bg-brand-red hover:text-white"
-          >
-            {access === "manage" ? "Delete" : "Request deletion"}
-          </button>
-        )}
+            Download results
+          </a>
+          {access !== "view" && (
+            <button
+              type="button"
+              data-tour="exam-delete"
+              onClick={() => (access === "manage" ? remove() : requestDeletion())}
+              disabled={busy}
+              aria-label={`${access === "manage" ? "Delete" : "Request deletion of"} ${exam.title}`}
+              className="cursor-pointer rounded-btn border border-brand-red px-3 py-1.5 text-sm font-semibold text-brand-red transition-colors duration-200 hover:bg-brand-red hover:text-white"
+            >
+              {access === "manage" ? "Delete" : "Request deletion"}
+            </button>
+          )}
+        </div>
       </div>
       {error && <p className="px-5 pb-3 text-sm font-semibold text-brand-red">{error}</p>}
       {notice && <p className="px-5 pb-3 text-sm font-semibold text-brand-green">{notice}</p>}
@@ -363,14 +465,14 @@ function ExamCard({
           exam={exam}
           busy={busy}
           access={access}
-          onSave={(questions) => update({ questions })}
+          onSave={async (questions) => (await update({ questions })) !== null}
           onRequestRemoval={(i) => requestDeletion(i)}
         />
       )}
       {panel === "sittings" && <SittingsPanel exam={exam} authFetch={authFetch} access={access} />}
       {sending && <SendToScoresDialog exam={exam} onClose={() => setSending(false)} onUnauthorized={onUnauthorized} />}
       {panel === "schedule" && (
-        <ScheduleEditor exam={exam} busy={busy} canEdit={access !== "view"} onSave={(patch) => update(patch)} />
+        <ScheduleEditor exam={exam} busy={busy} canEdit={access !== "view"} onSave={update} />
       )}
     </div>
   );
@@ -400,14 +502,16 @@ function mmss(secs: number) {
 }
 
 /** The exam's date and time, and where that leaves it for students. */
-function ScheduleStatus({ exam }: { exam: Exam }) {
+function ScheduleStatus({ exam, now }: { exam: Exam; now: number }) {
   if (!exam.opensAt) return null;
   const when = formatExamTime(exam.opensAt);
-  const [label, tone] = !exam.active
-    ? ["Hidden.", "text-pewter"]
-    : Date.now() < Date.parse(exam.opensAt)
-      ? ["Coming up:", "text-brand-navy"]
-      : ["Opened", "text-brand-green"];
+  const status = examStatus(exam, now);
+  const [label, tone] =
+    status === "hidden"
+      ? ["Hidden, so it won't open:", "text-pewter"]
+      : status === "scheduled"
+        ? ["Coming up:", "text-brand-navy"]
+        : ["Opened", "text-brand-green"];
   return (
     <p className={`text-[13px] font-semibold ${tone}`}>
       {label} {when} <span className="font-normal text-pewter">(Lagos time)</span>
@@ -416,9 +520,9 @@ function ScheduleStatus({ exam }: { exam: Exam }) {
 }
 
 /**
- * The date and time of the exam. Students see it under "Coming up" once the
- * exam is switched on (Open), and can start it from that moment. With no date
- * and time, the Open switch alone decides, as before.
+ * The date and time of the exam. Saving one switches the exam on (see the
+ * PUT route): students see it under "Coming up" and can start it from that
+ * moment. With no date and time, the Open switch alone decides.
  */
 function ScheduleEditor({
   exam,
@@ -429,24 +533,36 @@ function ScheduleEditor({
   exam: Exam;
   busy: boolean;
   canEdit: boolean;
-  onSave: (patch: Record<string, unknown>) => Promise<boolean>;
+  onSave: (patch: Record<string, unknown>) => Promise<Exam | null>;
 }) {
   const [value, setValue] = useState(isoToLagosInput(exam.opensAt));
   const [notice, setNotice] = useState("");
   const iso = lagosInputToIso(value);
   const unchanged = iso === exam.opensAt;
+  // Saving switches the test on, so a time already gone would open it this
+  // minute. The server refuses one more than a couple of minutes past too.
+  const passed = iso !== null && !unchanged && !opensLater({ opensAt: iso }, Date.now() - 2 * 60_000);
 
-  async function save(opensAt: string | null, done: string) {
+  async function save(opensAt: string | null) {
     setNotice("");
-    if (await onSave({ opensAt })) setNotice(done);
+    const saved = await onSave({ opensAt });
+    if (!saved) return;
+    // Worded from what the server did, which decides whether removing a date hides the test.
+    setNotice(
+      saved.opensAt
+        ? `Saved. It opens by itself on ${formatExamTime(saved.opensAt)}.`
+        : saved.active
+          ? "Date and time removed. The test stays open."
+          : "Date and time removed, and the test is hidden again."
+    );
   }
 
   return (
     <div className="border-t border-smoke p-5">
       <p className="font-display text-sm font-bold tracking-tight">Date &amp; time</p>
       <p className="mt-1 max-w-[620px] text-[13px] leading-relaxed text-pewter">
-        Lagos time. Once the exam is switched on (Open), students see it under &ldquo;Coming up&rdquo; with this date
-        and time, and the Start button appears by itself when it arrives. Untick Open to hide it again.
+        Lagos time. Saving a date and time is all you need: students see the test under &ldquo;Coming up&rdquo;
+        straight away, and it opens by itself at that time. Untick the switch to hide it and call it off.
       </p>
       <div className="mt-3 flex flex-wrap items-end gap-3">
         <label className="text-[13px] font-semibold">
@@ -463,8 +579,8 @@ function ScheduleEditor({
           <>
             <button
               type="button"
-              disabled={busy || unchanged || !iso}
-              onClick={() => save(iso, `Saved: ${iso ? formatExamTime(iso) : ""}.`)}
+              disabled={busy || unchanged || !iso || passed}
+              onClick={() => save(iso)}
               className="cursor-pointer rounded-btn bg-brand-navy px-4 py-2 text-sm font-semibold text-white hover:bg-ink disabled:cursor-not-allowed disabled:opacity-50"
             >
               Save date &amp; time
@@ -475,7 +591,7 @@ function ScheduleEditor({
                 disabled={busy}
                 onClick={() => {
                   setValue("");
-                  save(null, "Date and time removed. The Open switch alone decides now.");
+                  save(null);
                 }}
                 className="cursor-pointer text-[13px] font-semibold text-brand-red hover:underline disabled:opacity-50"
               >
@@ -485,7 +601,16 @@ function ScheduleEditor({
           </>
         )}
       </div>
-      {iso && !unchanged && <p className="mt-2 text-[13px] text-ink">Students will see: {formatExamTime(iso)}</p>}
+      {passed ? (
+        <p className="mt-2 text-[13px] font-semibold text-brand-red">
+          That time has already passed. Pick one still to come, or tick the switch to open the test now.
+        </p>
+      ) : (
+        iso && !unchanged && <p className="mt-2 text-[13px] text-ink">Students will see: {formatExamTime(iso)}</p>
+      )}
+      {canEdit && !exam.active && iso && !unchanged && !passed && (
+        <p className="mt-1 text-[13px] text-ink">This test is hidden now. Saving the date switches it back on.</p>
+      )}
       {notice && <p className="mt-2 text-sm font-semibold text-brand-green">{notice}</p>}
     </div>
   );

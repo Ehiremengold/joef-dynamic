@@ -11,6 +11,7 @@ import DeleteStudentDialog from "./DeleteStudentDialog";
 import Pagination from "./Pagination";
 import { usePagedList } from "./usePagedList";
 import { useConfirm } from "./useConfirm";
+import FilterSelect from "./FilterSelect";
 
 
 // Tighter than the other staff tables, because this one has the most columns.
@@ -45,35 +46,6 @@ function toQuery(f: RosterFilters): Record<string, string> {
 /** Years students can have joined in: each session's first year, newest first. */
 const entryYears = (sessions: AcademicSession[]) =>
   [...new Set(sessions.map((x) => x.name.slice(0, 4)))].sort().reverse();
-
-function FilterSelect<T extends string>({
-  label,
-  value,
-  onChange,
-  disabled,
-  children,
-}: {
-  label: string;
-  value: T;
-  onChange: (value: T) => void;
-  disabled?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className="block text-[13px] font-semibold text-graphite">
-      {label}
-      <select
-        value={value}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.value as T)}
-        className="mt-1 w-full cursor-pointer rounded-btn border border-smoke bg-white px-3 py-2.5 text-sm font-normal text-ink outline-none focus:border-brand-navy disabled:cursor-not-allowed disabled:bg-mist disabled:text-pewter"
-      >
-        {children}
-      </select>
-    </label>
-  );
-}
-
 
 export default function RosterPanel({
   me,
