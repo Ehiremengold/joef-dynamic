@@ -508,7 +508,9 @@ function ScheduleStatus({ exam, now }: { exam: Exam; now: number }) {
   const status = examStatus(exam, now);
   const [label, tone] =
     status === "hidden"
-      ? ["Hidden, so it won't open:", "text-pewter"]
+      ? opensLater(exam, now)
+        ? ["Hidden, so it won't open. Tick the switch and it opens on", "text-pewter"]
+        : ["Hidden, so students can't see it. It was set for", "text-pewter"]
       : status === "scheduled"
         ? ["Coming up:", "text-brand-navy"]
         : ["Opened", "text-brand-green"];
