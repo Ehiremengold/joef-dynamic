@@ -108,6 +108,8 @@ export type Student = {
   address: string | null;
   phone: string | null;
   active: boolean;
+  /** On roster rows only: the session a graduate finished, e.g. "2025/2026". */
+  graduatedFrom?: string | null;
   createdAt: string;
 };
 

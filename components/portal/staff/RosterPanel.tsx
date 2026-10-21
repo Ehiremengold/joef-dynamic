@@ -28,7 +28,8 @@ type RosterFilters = {
   sessionId: string;
   termId: string;
 };
-const NO_FILTERS: RosterFilters = { campusId: "", classKey: "", status: "", year: "", sessionId: "", termId: "" };
+// The roster opens on the students at school: graduates and leavers are a filter away.
+const NO_FILTERS: RosterFilters = { campusId: "", classKey: "", status: "active", year: "", sessionId: "", termId: "" };
 
 /** The roster filters as /api/students query parameters. */
 function toQuery(f: RosterFilters): Record<string, string> {
@@ -201,9 +202,9 @@ export default function RosterPanel({
                   ))}
             </FilterSelect>
             <FilterSelect label="Status" value={filters.status} onChange={(status) => setFilter({ status })}>
-              <option value="">Active and inactive</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive (left)</option>
+              <option value="active">At school (active)</option>
+              <option value="inactive">Left or graduated</option>
+              <option value="">Everyone</option>
             </FilterSelect>
             <FilterSelect label="Entry year" value={filters.year} onChange={(year) => setFilter({ year })}>
               <option value="">Any year</option>
@@ -314,6 +315,8 @@ export default function RosterPanel({
                     <td className={CELL}>
                       {s.active ? (
                         <span className="text-brand-green">Active</span>
+                      ) : s.graduatedFrom ? (
+                        <span className="text-brand-navy">Graduated {s.graduatedFrom}</span>
                       ) : (
                         <span className="text-pewter">Inactive</span>
                       )}

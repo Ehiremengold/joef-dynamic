@@ -126,7 +126,33 @@ export async function listStudentsPage(
     },
     page,
     mapStudent
-  ).then((result) => ({ ...result, periodMatch }));
+  )
+    .then(withGraduations)
+    .then((result) => ({ ...result, periodMatch }));
+}
+
+/**
+ * Mark the graduates on a roster page, so they read "Graduated" rather than
+ * just inactive. A graduation is recorded as a move into the new session
+ * (see 0015), so the session they finished is the one before it.
+ */
+async function withGraduations(page: Page<Student>): Promise<Page<Student>> {
+  const inactive = page.rows.filter((s) => !s.active).map((s) => s.id);
+  if (inactive.length === 0) return page;
+  const { data, error } = await serviceClient()
+    .from("student_promotions")
+    .select("student_id, academic_sessions(name)")
+    .eq("outcome", "graduated")
+    .in("student_id", inactive);
+  if (error) throw new Error(error.message);
+  const finished = new Map(
+    ((data ?? []) as unknown as Row[]).map((r) => {
+      const into = ((r.academic_sessions as Row | null)?.name as string | undefined) ?? "";
+      const start = Number(into.slice(0, 4));
+      return [r.student_id as string, start ? `${start - 1}/${start}` : null];
+    })
+  );
+  return { ...page, rows: page.rows.map((s) => (finished.has(s.id) ? { ...s, graduatedFrom: finished.get(s.id) } : s)) };
 }
 
 const ADMISSION_PREFIX = "JDCL-";
