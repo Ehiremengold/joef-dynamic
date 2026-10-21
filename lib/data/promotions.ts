@@ -34,6 +34,51 @@ export async function listPromotionCandidates(classId: string, sessionId: string
     }));
 }
 
+/**
+ * How many students in each class still wait to be moved into the session:
+ * active, not yet moved, and not new that session (a student who joined in
+ * it is already in the right class, as the Promotion tab assumes). Classes
+ * with nobody waiting are left out. For SS3 these are the students still to
+ * graduate.
+ */
+export async function promotionProgress(sessionId: string, sessionStartYear: string): Promise<Map<string, number>> {
+  const supa = serviceClient();
+  // More students than one page of PostgREST rows: read them in pages.
+  const students: Row[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supa
+      .from("students")
+      .select("id, class_id, entry_year")
+      .eq("active", true)
+      .not("class_id", "is", null)
+      .lt("entry_year", sessionStartYear)
+      .order("id")
+      .range(from, from + 999);
+    if (error) throw new Error(error.message);
+    students.push(...(data ?? []));
+    if ((data ?? []).length < 1000) break;
+  }
+  const moved = new Set<string>();
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supa
+      .from("student_promotions")
+      .select("student_id")
+      .eq("session_id", sessionId)
+      .order("id")
+      .range(from, from + 999);
+    if (error) throw new Error(error.message);
+    for (const r of data ?? []) moved.add(r.student_id as string);
+    if ((data ?? []).length < 1000) break;
+  }
+  const waiting = new Map<string, number>();
+  for (const st of students) {
+    if (moved.has(st.id as string)) continue;
+    const classId = st.class_id as string;
+    waiting.set(classId, (waiting.get(classId) ?? 0) + 1);
+  }
+  return waiting;
+}
+
 /** Moves already made out of this class into the session, newest first. */
 export async function listClassPromotions(classId: string, sessionId: string): Promise<Promotion[]> {
   const { data, error } = await serviceClient()

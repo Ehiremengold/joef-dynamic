@@ -111,7 +111,7 @@ const TABS: [Tab, string][] = [
   ["scores", "Term scores"],
   ["attendance", "Attendance"],
   ["reports", "Report cards"],
-  ["promotion", "Promotion"],
+  ["promotion", "Promotion & graduation"],
   ["team", "Staff accounts"],
   ["approvals", "Approvals"],
 ];
@@ -222,7 +222,7 @@ export default function StaffPage() {
                     so people who already saw it aren't shown it again. */}
                 <GuideTour
                   key={tab}
-                  id={tab === "promotion" ? "staff-promotion-v1" : `staff-tab-${tab}-v${TAB_TOUR_VERSION[tab] ?? 1}`}
+                  id={tab === "promotion" ? "staff-promotion-v2" : `staff-tab-${tab}-v${TAB_TOUR_VERSION[tab] ?? 1}`}
                   steps={staffTabTour(tab, me.role)}
                   label="How this tab works"
                   tone="light"

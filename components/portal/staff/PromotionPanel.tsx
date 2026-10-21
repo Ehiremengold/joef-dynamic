@@ -49,7 +49,15 @@ export default function PromotionPanel({
   const currentTerm = termsQ.data?.terms.find((t) => t.isCurrent) ?? null;
   const currentSession = sessions.find((s) => s.isCurrent) ?? null;
   const sessionId = chosenSession || defaultTargetSession(sessions, currentTerm)?.id || "";
-  const classId = chosenClass || myClasses[0]?.id || "";
+  // How many students each class still has to move into the session (SS3: to graduate).
+  const progressQ = useApi<{ waiting: Record<string, number> }>(
+    sessionId ? `/api/promotions?sessionId=${sessionId}` : null,
+    onUnauthorized
+  );
+  const waiting = progressQ.data?.waiting ?? {};
+  const toDo = myClasses.filter((c) => waiting[c.id]);
+  // Opens on the first class with students still to move.
+  const classId = chosenClass || toDo[0]?.id || myClasses[0]?.id || "";
   const cls = allClasses.find((c) => c.id === classId) ?? null;
   const session = sessions.find((s) => s.id === sessionId) ?? null;
   const graduating = cls?.level === "SS3";
@@ -82,10 +90,10 @@ export default function PromotionPanel({
   const rowFor = (st: PromotionCandidate): RowPlan => ({ ...defaultRow(st), ...changes[st.id] });
 
   /**
-   * A move changes who is in which class: the roster, and every class's
-   * attendance, report-card and promotion lists. Nothing else.
+   * A move changes who is in which class: the roster, every class's
+   * attendance, report-card and promotion lists, and what's left to do.
    */
-  const refreshAfterMove = () => invalidate("/api/students", "/api/classes/*");
+  const refreshAfterMove = () => invalidate("/api/students", "/api/classes/*", "/api/promotions");
 
   const update = (id: string, patch: Partial<RowPlan>) =>
     setPlan({ url: promotionUrl, rows: { ...changes, [id]: { ...changes[id], ...patch } } });
@@ -109,7 +117,9 @@ export default function PromotionPanel({
   ].filter(Boolean) as string[];
   const buttonLabel = actions.length
     ? actions.join(", ").replace(/^./, (c) => c.toUpperCase())
-    : "Promote 0 students";
+    : graduating
+      ? "Graduate 0 students"
+      : "Promote 0 students";
 
   async function submit() {
     if (!cls || !session) return;
@@ -180,10 +190,11 @@ export default function PromotionPanel({
       {dialog}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="font-display text-xl font-bold tracking-tight">Promote students</h2>
+          <h2 className="font-display text-xl font-bold tracking-tight">Promote or graduate students</h2>
           <p className="mt-1 max-w-[640px] text-sm leading-relaxed text-graphite">
-            Move a class up for the new session. Do this after the Third Term results, attendance
-            and report cards are finished. Past results always keep the class they were taken in.
+            Move a class up for the new session, or graduate an SS3 class. Do this after the Third Term
+            results, attendance and report cards are finished. Past results always keep the class they
+            were taken in.
           </p>
         </div>
       </div>
@@ -200,6 +211,36 @@ export default function PromotionPanel({
         </p>
       ) : (
         <>
+          {session && progressQ.data && (
+            <div data-tour="promo-progress" className="rounded-card border border-smoke bg-white p-4">
+              {toDo.length === 0 ? (
+                <p className="text-sm font-semibold text-brand-green">
+                  Every class is done: nobody is left to move into {session.name}.
+                </p>
+              ) : (
+                <>
+                  <p className="text-sm font-semibold">
+                    Still to do for {session.name}: {toDo.length} class{toDo.length === 1 ? "" : "es"}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {toDo.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => setClassId(c.id)}
+                        aria-pressed={c.id === classId}
+                        className={`cursor-pointer rounded-btn border px-2.5 py-1 text-[13px] font-semibold transition-colors duration-150 ${
+                          c.id === classId ? "border-brand-navy bg-brand-navy text-white" : "border-smoke text-ink hover:border-brand-navy"
+                        }`}
+                      >
+                        {classLabel(c)}: {waiting[c.id]} to {c.level === "SS3" ? "graduate" : "move"}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
           <div className="flex flex-wrap gap-3">
             <div data-tour="promo-session">
               <label className="block text-[13px] font-semibold" htmlFor="promo-session">Moving into session</label>
@@ -218,7 +259,10 @@ export default function PromotionPanel({
               <label className="block text-[13px] font-semibold" htmlFor="promo-class">Class</label>
               <select id="promo-class" value={classId} onChange={(e) => setClassId(e.target.value)} className={SELECT}>
                 {myClasses.map((c) => (
-                  <option key={c.id} value={c.id}>{classLabel(c)}</option>
+                  <option key={c.id} value={c.id}>
+                    {classLabel(c)}
+                    {progressQ.data ? (waiting[c.id] ? ` (${waiting[c.id]} to ${c.level === "SS3" ? "graduate" : "move"})` : " (done)") : ""}
+                  </option>
                 ))}
               </select>
             </div>
@@ -247,6 +291,13 @@ export default function PromotionPanel({
             <p className="rounded-btn bg-brand-gold/20 px-4 py-3 text-sm text-ink">
               {session.name} is before the current session ({currentSession.name}). Students are
               normally moved into the current session or the one after it.
+            </p>
+          )}
+          {graduating && session && (
+            <p className="rounded-btn bg-mist px-4 py-3 text-sm text-ink">
+              These are the students who finished SS3 last session. Graduating marks them as having left the
+              school: they come off this class&rsquo;s lists, and their results and report cards are kept.
+              Students promoted into {cls ? classLabel(cls) : "SS3"} for {session.name} aren&rsquo;t listed, so they stay.
             </p>
           )}
           {(error || promotionQ.error) && (

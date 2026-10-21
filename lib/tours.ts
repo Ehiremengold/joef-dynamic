@@ -195,8 +195,8 @@ export function staffDashboardTour(role: StaffRole): TourStep[] {
     },
     {
       target: "tab-promotion",
-      title: "Promotion",
-      text: "At the end of a session, move a class up to the next class in one go. Any move can be undone.",
+      title: "Promotion & graduation",
+      text: "At the end of a session, move a class up to the next class in one go, or graduate an SS3 class. Any move can be undone.",
     },
     {
       target: "tab-team",
@@ -603,8 +603,13 @@ const REPORTS_TOUR: TourStep[] = [
 
 export const PROMOTION_TOUR: TourStep[] = [
   {
-    title: "Promoting a class",
-    text: "Do this once a year, after the Third Term results, attendance and report cards are finished. Past results are kept, and old report sheets still show the class the student was in that term.",
+    title: "Promoting and graduating",
+    text: "Do this once a year, after the Third Term results, attendance and report cards are finished. Every class moves up, and SS3 graduates. Past results are kept, and old report sheets still show the class the student was in that term.",
+  },
+  {
+    target: "promo-progress",
+    title: "What's left to do",
+    text: "Every class that still has students to move into the session, with how many. SS3 classes show how many are still to graduate. Press a class to open it. When a class is done it drops off this list.",
   },
   {
     target: "promo-session",
@@ -624,11 +629,11 @@ export const PROMOTION_TOUR: TourStep[] = [
   {
     target: "promo-table",
     title: "4. Check each student",
-    text: "Everyone is set to Promote. Change a student to Repeat to keep them in this class, choose a different class for a student changing campus or arm, or choose “Not now” to decide later. Students who joined in the new session start on “Not now” because they are already in the right class. SS3 students are set to Graduate, which marks them as having left.",
+    text: "Everyone is set to Promote. Change a student to Repeat to keep them in this class, choose a different class for a student changing campus or arm, or choose “Not now” to decide later. Students who joined in the new session start on “Not now” because they are already in the right class. SS3 students are set to Graduate, which marks them as having left. An SS3 class only lists the students who finished SS3 last session: students promoted into SS3 for the new session aren't shown, so they stay.",
   },
   {
     target: "promo-submit",
-    title: "5. Promote",
+    title: "5. Promote or graduate",
     text: "Press the button and confirm. Everyone moves together. If anything goes wrong, nobody is moved.",
   },
   {

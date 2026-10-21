@@ -613,7 +613,7 @@ function AddStudent({
             </ul>
             <p className="mt-2">
               If it&rsquo;s the same child, don&rsquo;t add them again: put them in their new class from the roster, or
-              promote them from the Promotion tab.
+              promote them from the Promotion &amp; graduation tab.
             </p>
           </>
         ),
