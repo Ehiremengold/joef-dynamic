@@ -63,7 +63,7 @@ export default function CbtPage() {
               {!loading && (
                 <div className="flex flex-wrap gap-2">
                   {me ? (
-                    <GuideTour id="student-area-v1" steps={STUDENT_AREA_TOUR} />
+                    <GuideTour id="student-area-v2" steps={STUDENT_AREA_TOUR} />
                   ) : (
                     <GuideTour id="student-signin-v1" steps={STUDENT_SIGNIN_TOUR} />
                   )}

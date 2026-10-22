@@ -85,7 +85,7 @@ export default function EntrancePage() {
                 </h1>
               </div>
               {/* Only before the test starts: a tour mid-test would eat into the timer. */}
-              {step === "register" && <GuideTour id="entrance-v1" steps={ENTRANCE_TOUR} />}
+              {step === "register" && <GuideTour id="entrance-v2" steps={ENTRANCE_TOUR} />}
             </div>
           </div>
         </section>

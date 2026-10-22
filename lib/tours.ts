@@ -62,7 +62,7 @@ export const ENTRANCE_TOUR: TourStep[] = [
   {
     target: "entrance-submit",
     title: "Register & continue",
-    text: "You'll be given a candidate number, so write it down. Then choose the test and press Start. A timer runs at the top of the screen and answers save as you go. Press “Submit test” when you are done to see the score.",
+    text: "You'll be given a candidate number, so write it down. Then choose the test and press Start. Questions come one at a time: press Next to move on, or a question number below to jump to it. The “Time left” clock stays at the top of the screen and answers save as you go. Press “Submit test” when you are done to see the score.",
   },
 ];
 
@@ -106,7 +106,7 @@ export const STUDENT_AREA_TOUR: TourStep[] = [
   },
   {
     title: "While you're in a test",
-    text: "The clock in the top corner counts down. When it reaches zero your test is submitted automatically. Every answer saves as you go, so if the power or network goes, sign in again and you'll carry on where you stopped. Press “Submit test” at the bottom when you have finished.",
+    text: "You see one question at a time: pick an answer, then press Next (or Previous to go back). Below the question, every question is listed by number: filled-in numbers are answered, empty ones aren't, and pressing a number takes you to that question. The “Time left” clock stays at the top of the screen; it turns gold with 5 minutes left and red in the last minute, and at zero your test is submitted automatically. Every answer saves as you go, so if the power or network goes, sign in again and you'll carry on where you stopped. Press “Submit test” when you have finished.",
   },
   {
     target: "student-signout",

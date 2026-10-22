@@ -14,6 +14,29 @@ type SaveState = "saved" | "saving" | "retrying";
 
 const AUTOSAVE_DEBOUNCE_MS = 700;
 
+// Which question was on screen, so a refresh mid-test comes back to it.
+const placeKey = (examId: string) => `jdc-test-place:${examId}`;
+function readPlace(examId: string): number | null {
+  try {
+    const v = window.sessionStorage.getItem(placeKey(examId));
+    return v === null ? null : Number(v);
+  } catch {
+    return null;
+  }
+}
+function keepPlace(examId: string, index: number) {
+  try {
+    window.sessionStorage.setItem(placeKey(examId), String(index));
+  } catch {
+    // Storage blocked: a refresh opens on the first unanswered question instead.
+  }
+}
+
+/** "4, 7 and 12" */
+function listNumbers(ns: number[]): string {
+  return ns.length > 1 ? `${ns.slice(0, -1).join(", ")} and ${ns[ns.length - 1]}` : String(ns[0]);
+}
+
 export default function TestRunner({
   exam,
   studentName,
@@ -34,11 +57,14 @@ export default function TestRunner({
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  // One question on screen at a time.
+  const [current, setCurrent] = useState(0);
 
   const submittedRef = useRef(false);
   const answersRef = useRef(answers);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onFinishedRef = useRef(onFinished);
+  const questionRef = useRef<HTMLElement>(null);
 
   answersRef.current = answers;
   onFinishedRef.current = onFinished;
@@ -74,10 +100,15 @@ export default function TestRunner({
           finish(d.attempt);
           return;
         }
-        setAnswers(
-          exam.questions.map((_, i) =>
-            Number.isInteger(d.answers?.[i]) ? d.answers[i] : null
-          )
+        const restored: (number | null)[] = exam.questions.map((_, i) =>
+          Number.isInteger(d.answers?.[i]) ? d.answers[i] : null
+        );
+        setAnswers(restored);
+        // Back where they were after a refresh; otherwise the first question still to answer.
+        const place = readPlace(exam.id);
+        const firstOpen = restored.findIndex((a) => a === null);
+        setCurrent(
+          place !== null && place >= 0 && place < exam.questions.length ? place : Math.max(firstOpen, 0)
         );
         setSecondsLeft(d.secondsLeft);
       } catch (e) {
@@ -134,11 +165,21 @@ export default function TestRunner({
     saveTimer.current = setTimeout(save, AUTOSAVE_DEBOUNCE_MS);
   }
 
+  function goTo(index: number) {
+    const i = Math.min(Math.max(index, 0), exam.questions.length - 1);
+    setCurrent(i);
+    keepPlace(exam.id, i);
+    // Pressing a number at the bottom of a phone screen brings the question back into view.
+    questionRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+
   async function submit(auto = false) {
     if (submittedRef.current) return;
     if (!auto && answered < exam.questions.length) {
+      const open = answers.flatMap((a, i) => (a === null ? [i + 1] : []));
       const ok = window.confirm(
-        `You have answered ${answered} of ${exam.questions.length} questions. Submit anyway?`
+        `You have answered ${answered} of ${exam.questions.length} questions. ` +
+          `Question${open.length === 1 ? "" : "s"} ${listNumbers(open)} ${open.length === 1 ? "has" : "have"} no answer. Submit anyway?`
       );
       if (!ok) return;
     }
@@ -238,17 +279,25 @@ export default function TestRunner({
   const mins = Math.floor(total / 60);
   const secs = total % 60;
   const low = total <= 60;
+  const soon = total <= 5 * 60;
+  const count = exam.questions.length;
+  const q = exam.questions[current];
+  const last = current === count - 1;
 
   return (
     <div>
-      {/* Sticky status bar */}
-      <div className="sticky top-0 z-20 -mx-4 mb-6 border-b border-smoke bg-white/95 px-4 py-3 backdrop-blur">
+      {/*
+        Pinned to the top of the screen, over the site menu (the same height),
+        so the time is never out of sight however far they scroll. The page
+        header below keeps the question clear of it.
+      */}
+      <div className="fixed inset-x-0 top-0 z-50 border-b border-smoke bg-white px-4 py-3 shadow-sm">
         <div className="mx-auto flex max-w-[760px] items-center justify-between gap-4">
           <div className="min-w-0">
             <p className="truncate font-display text-sm font-bold tracking-tight">{exam.title}</p>
             <p className="text-[13px] text-graphite">
-              {answered}/{exam.questions.length} answered · {studentName}
-              {className ? ` · ${className}` : ""}
+              {studentName}
+              {className ? ` · ${className}` : ""} · {answered} of {count} answered
             </p>
             <p
               className={`text-[13px] ${
@@ -264,74 +313,148 @@ export default function TestRunner({
             </p>
           </div>
           <div
-            className={`rounded-btn px-3 py-1.5 font-display text-lg font-bold tabular-nums tracking-tight ${
-              low ? "bg-brand-red text-white" : "bg-mist text-ink"
+            className={`shrink-0 rounded-btn px-4 py-2 text-center ${
+              low ? "animate-pulse bg-brand-red text-white" : soon ? "bg-brand-gold text-ink" : "bg-brand-navy text-white"
             }`}
+            role="timer"
             aria-live={low ? "assertive" : "off"}
             aria-label={`Time left ${mins} minutes ${secs} seconds`}
           >
-            {String(mins).padStart(2, "0")}:{String(secs).padStart(2, "0")}
+            <span className="block text-[11px] font-semibold uppercase tracking-wide opacity-80">Time left</span>
+            <span className="block font-display text-2xl font-bold tabular-nums tracking-tight">
+              {String(mins).padStart(2, "0")}:{String(secs).padStart(2, "0")}
+            </span>
           </div>
         </div>
       </div>
 
-      <ol className="mx-auto max-w-[760px] space-y-6">
-        {exam.questions.map((q, qi) => (
-          <li key={q.id} className="rounded-card border border-smoke bg-white p-5">
-            <p className="font-semibold">
-              <span className="mr-2 text-pewter">{qi + 1}.</span>
-              {q.text}
-            </p>
-            <div className="mt-4 grid gap-2">
-              {q.options.map((opt, oi) => {
-                const chosen = answers[qi] === oi;
-                return (
-                  <label
-                    key={oi}
-                    className={`flex cursor-pointer items-center gap-3 rounded-btn border px-4 py-3 transition-colors duration-150 ${
-                      chosen
-                        ? "border-brand-navy bg-brand-navy text-white"
-                        : "border-smoke bg-white hover:bg-mist"
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name={`q-${q.id}`}
-                      checked={chosen}
-                      onChange={() => choose(qi, oi)}
-                      className="sr-only"
-                    />
-                    <span
-                      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-btn border text-xs font-bold ${
-                        chosen ? "border-white bg-white text-brand-navy" : "border-smoke text-graphite"
-                      }`}
-                      aria-hidden="true"
-                    >
-                      {String.fromCharCode(65 + oi)}
-                    </span>
-                    <span className="text-sm font-medium">{opt}</span>
-                  </label>
-                );
-              })}
-            </div>
-          </li>
-        ))}
-      </ol>
-
-      <div className="mx-auto mt-8 max-w-[760px]">
-        {error && (
-          <p className="mb-3 rounded-btn border border-brand-red bg-brand-red/10 px-4 py-3 text-sm font-semibold text-brand-red" role="alert">
-            {error}
+      <div className="mx-auto max-w-[760px]">
+        <section ref={questionRef} aria-labelledby="question-title" className="scroll-mt-32 rounded-card border border-smoke bg-white p-5 md:p-6">
+          <p className="text-[13px] font-semibold uppercase tracking-wide text-pewter">
+            Question {current + 1} of {count}
           </p>
-        )}
-        <button
-          type="button"
-          disabled={submitting}
-          onClick={() => submit(false)}
-          className="w-full cursor-pointer rounded-btn bg-brand-red px-6 py-4 font-semibold text-white transition-colors duration-200 hover:bg-brand-red-dark disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {submitting ? "Submitting…" : "Submit test"}
-        </button>
+          <p id="question-title" className="mt-2 text-lg font-semibold leading-snug">
+            {q.text}
+          </p>
+          <div className="mt-5 grid gap-2" role="radiogroup" aria-labelledby="question-title">
+            {q.options.map((opt, oi) => {
+              const chosen = answers[current] === oi;
+              return (
+                <label
+                  key={oi}
+                  className={`flex cursor-pointer items-center gap-3 rounded-btn border px-4 py-3 transition-colors duration-150 ${
+                    chosen
+                      ? "border-brand-navy bg-brand-navy text-white"
+                      : "border-smoke bg-white hover:bg-mist"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name={`q-${q.id}`}
+                    checked={chosen}
+                    onChange={() => choose(current, oi)}
+                    className="sr-only"
+                  />
+                  <span
+                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-btn border text-xs font-bold ${
+                      chosen ? "border-white bg-white text-brand-navy" : "border-smoke text-graphite"
+                    }`}
+                    aria-hidden="true"
+                  >
+                    {String.fromCharCode(65 + oi)}
+                  </span>
+                  <span className="text-sm font-medium">{opt}</span>
+                </label>
+              );
+            })}
+          </div>
+
+          <div className="mt-6 flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={() => goTo(current - 1)}
+              disabled={current === 0}
+              className="cursor-pointer rounded-btn border border-ink px-5 py-2.5 text-sm font-semibold transition-colors duration-200 hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-ink"
+            >
+              Previous
+            </button>
+            {last ? (
+              <button
+                type="button"
+                disabled={submitting}
+                onClick={() => submit(false)}
+                className="cursor-pointer rounded-btn bg-brand-red px-5 py-2.5 text-sm font-semibold text-white transition-colors duration-200 hover:bg-brand-red-dark disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {submitting ? "Submitting…" : "Submit test"}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => goTo(current + 1)}
+                className="cursor-pointer rounded-btn bg-brand-navy px-5 py-2.5 text-sm font-semibold text-white transition-colors duration-200 hover:bg-ink"
+              >
+                Next
+              </button>
+            )}
+          </div>
+        </section>
+
+        {/* Every question by number: answered ones filled in; press one to go to it. */}
+        <nav aria-label="Questions" className="mt-6 rounded-card border border-smoke bg-white p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="font-display text-sm font-bold tracking-tight">
+              {answered} of {count} answered
+            </p>
+            <p className="flex flex-wrap items-center gap-3 text-[12px] text-graphite">
+              <span className="flex items-center gap-1.5">
+                <span className="h-3 w-3 rounded-[3px] bg-brand-navy" aria-hidden="true" /> Answered
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="h-3 w-3 rounded-[3px] border border-pewter bg-white" aria-hidden="true" /> Not answered
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="h-3 w-3 rounded-[3px] bg-white ring-2 ring-brand-gold" aria-hidden="true" /> On screen
+              </span>
+            </p>
+          </div>
+          <ol className="mt-4 grid grid-cols-[repeat(auto-fill,minmax(2.75rem,1fr))] gap-2">
+            {exam.questions.map((question, qi) => {
+              const done = answers[qi] !== null;
+              const here = qi === current;
+              return (
+                <li key={question.id}>
+                  <button
+                    type="button"
+                    onClick={() => goTo(qi)}
+                    aria-current={here ? "step" : undefined}
+                    aria-label={`Question ${qi + 1}, ${done ? "answered" : "not answered"}`}
+                    className={`h-11 w-full cursor-pointer rounded-btn text-sm font-bold tabular-nums transition-colors duration-150 ${
+                      done ? "bg-brand-navy text-white hover:bg-ink" : "border border-pewter bg-white text-ink hover:bg-mist"
+                    } ${here ? "ring-2 ring-brand-gold ring-offset-2" : ""}`}
+                  >
+                    {qi + 1}
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+        </nav>
+
+        <div className="mt-6">
+          {error && (
+            <p className="mb-3 rounded-btn border border-brand-red bg-brand-red/10 px-4 py-3 text-sm font-semibold text-brand-red" role="alert">
+              {error}
+            </p>
+          )}
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={() => submit(false)}
+            className="w-full cursor-pointer rounded-btn bg-brand-red px-6 py-4 font-semibold text-white transition-colors duration-200 hover:bg-brand-red-dark disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {submitting ? "Submitting…" : "Submit test"}
+          </button>
+        </div>
       </div>
     </div>
   );
