@@ -25,3 +25,22 @@ export async function readPage<T>(
   }
   return { rows: (data ?? []).map(map), total: count ?? 0 };
 }
+
+/** PostgREST returns at most this many rows a request. */
+const MAX_ROWS = 1000;
+
+/**
+ * Every row of a query bigger than one PostgREST response. `run` applies the
+ * range it is given to a query with a stable order (e.g. by id).
+ */
+export async function readAll(
+  run: (from: number, to: number) => PromiseLike<{ data: Row[] | null; error: { message: string } | null }>
+): Promise<Row[]> {
+  const rows: Row[] = [];
+  for (let from = 0; ; from += MAX_ROWS) {
+    const { data, error } = await run(from, from + MAX_ROWS - 1);
+    if (error) throw new Error(error.message);
+    rows.push(...(data ?? []));
+    if (!data || data.length < MAX_ROWS) return rows;
+  }
+}

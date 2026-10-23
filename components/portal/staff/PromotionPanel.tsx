@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ApiError, EDITABLE, sendJson, useApi, useInvalidate } from "@/lib/client/api";
 import { isAdmin } from "@/lib/roles";
 import { classLabel } from "@/lib/classes";
-import { defaultTargetSession, nextLevel, sessionStartYear, suggestNextClass } from "@/lib/promotion";
+import { defaultTargetSession, graduates, moveVerb, nextLevel, sessionStartYear, suggestNextClass } from "@/lib/promotion";
 import type { AcademicSession, Class, Promotion, PromotionCandidate, SignedInStaff, Term } from "@/lib/types";
 import { useConfirm } from "./useConfirm";
 
@@ -50,17 +50,24 @@ export default function PromotionPanel({
   const currentSession = sessions.find((s) => s.isCurrent) ?? null;
   const sessionId = chosenSession || defaultTargetSession(sessions, currentTerm)?.id || "";
   // How many students each class still has to move into the session (SS3: to graduate).
-  const progressQ = useApi<{ waiting: Record<string, number> }>(
+  const progressQ = useApi<{ progress: Record<string, { toMove: number; active: number }> }>(
     sessionId ? `/api/promotions?sessionId=${sessionId}` : null,
     onUnauthorized
   );
-  const waiting = progressQ.data?.waiting ?? {};
-  const toDo = myClasses.filter((c) => waiting[c.id]);
-  // Opens on the first class with students still to move.
-  const classId = chosenClass || toDo[0]?.id || myClasses[0]?.id || "";
+  const progress = progressQ.data?.progress ?? {};
+  const toMove = (c: Class) => progress[c.id]?.toMove ?? 0;
+  const toDo = myClasses.filter((c) => toMove(c) > 0);
+  /** "(98 to graduate)", "(done)", or "(no students)" beside a class. */
+  const standing = (c: Class) =>
+    !progress[c.id] ? "no students" : toMove(c) ? `${toMove(c)} to ${moveVerb(c.level)}` : "done";
+  // Opens on the first class with students still to move. Until the counts
+  // arrive nothing is picked, so the table doesn't load one class and then
+  // swap to another; if they can't be read, it falls back to the first class.
+  const countsKnown = !progressQ.isPending || !sessionId;
+  const classId = chosenClass || (countsKnown ? toDo[0]?.id || myClasses[0]?.id || "" : "");
   const cls = allClasses.find((c) => c.id === classId) ?? null;
   const session = sessions.find((s) => s.id === sessionId) ?? null;
-  const graduating = cls?.level === "SS3";
+  const graduating = cls ? graduates(cls.level) : false;
   // Each class picks its own likely destination until someone changes it.
   const targetId =
     chosenTarget && chosenTarget.forClass === classId
@@ -233,7 +240,7 @@ export default function PromotionPanel({
                           c.id === classId ? "border-brand-navy bg-brand-navy text-white" : "border-smoke text-ink hover:border-brand-navy"
                         }`}
                       >
-                        {classLabel(c)}: {waiting[c.id]} to {c.level === "SS3" ? "graduate" : "move"}
+                        {classLabel(c)}: {standing(c)}
                       </button>
                     ))}
                   </div>
@@ -261,7 +268,7 @@ export default function PromotionPanel({
                 {myClasses.map((c) => (
                   <option key={c.id} value={c.id}>
                     {classLabel(c)}
-                    {progressQ.data ? (waiting[c.id] ? ` (${waiting[c.id]} to ${c.level === "SS3" ? "graduate" : "move"})` : " (done)") : ""}
+                    {progressQ.data ? ` (${standing(c)})` : ""}
                   </option>
                 ))}
               </select>
@@ -298,6 +305,12 @@ export default function PromotionPanel({
               These are the students who finished SS3 last session. Graduating marks them as having left the
               school: they come off this class&rsquo;s lists, and their results and report cards are kept.
               Students promoted into {cls ? classLabel(cls) : "SS3"} for {session.name} aren&rsquo;t listed, so they stay.
+            </p>
+          )}
+          {cls && session && progressQ.data && students.length > 0 && toMove(cls) === 0 && (
+            <p className="rounded-btn bg-brand-green/10 px-4 py-3 text-sm text-ink">
+              {classLabel(cls)} is done for {session.name}. The students listed below joined in {session.name}, so they are
+              already in the right class and start on &ldquo;Not now&rdquo;. Nothing needs doing unless one is in the wrong class.
             </p>
           )}
           {(error || promotionQ.error) && (

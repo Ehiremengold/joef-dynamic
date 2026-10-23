@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useApi, useInvalidate } from "@/lib/client/api";
 import { formatExamTime, isoToLagosInput, lagosInputToIso } from "@/lib/lagosTime";
 import { examStatus, nextStatusChange, opensLater, type ExamStatus } from "@/lib/examSchedule";
@@ -13,6 +13,9 @@ import EntranceAccess from "./EntranceAccess";
 import SendToScoresDialog from "./SendToScoresDialog";
 import Pagination from "./Pagination";
 import FilterSelect from "./FilterSelect";
+import RichText from "@/components/portal/RichText";
+import { plainText, type Mark } from "@/lib/richText";
+import { pasteFormatted, wrapSelection } from "./formattedPaste";
 
 /** Cookie-authenticated fetch; calls onUnauthorized on a 401 so the shell re-checks. */
 type AuthFetch = (url: string, init?: RequestInit) => Promise<Response>;
@@ -772,6 +775,40 @@ function SittingsPanel({ exam, authFetch, access }: { exam: Exam; authFetch: Aut
 
 type QuestionDraft = Omit<Exam["questions"][number], "id" | "position">;
 
+type Field = { el: HTMLTextAreaElement | HTMLInputElement; set: (value: string) => void };
+
+/**
+ * Bold / Underline / Italic for the question boxes. They wrap the selected
+ * words in marks (lib/richText); pasting from Word keeps its own styling.
+ */
+function FormatButtons({ field }: { field: () => Field | null }) {
+  const buttons: [Mark, string, string][] = [
+    ["b", "B", "font-bold"],
+    ["u", "U", "underline"],
+    ["i", "I", "italic"],
+  ];
+  return (
+    <div className="flex items-center gap-1">
+      {buttons.map(([mark, label, look]) => (
+        <button
+          key={mark}
+          type="button"
+          // Keep the selection in the box being typed in.
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            const f = field();
+            if (f) wrapSelection(f.el, mark, f.set);
+          }}
+          aria-label={{ b: "Bold", u: "Underline", i: "Italic" }[mark]}
+          className={`h-8 w-8 cursor-pointer rounded-btn border border-smoke bg-white text-sm ${look} hover:border-brand-navy`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /** The question form, for adding a question or editing one. Empty options are dropped on save. */
 function QuestionForm({
   name,
@@ -800,6 +837,10 @@ function QuestionForm({
   const [options, setOptions] = useState(blankOptions);
   const [correctIndex, setCorrectIndex] = useState(initial?.correctIndex ?? 0);
   const [formError, setFormError] = useState("");
+  // The box the B / U / I buttons act on: the last one typed in.
+  const focused = useRef<Field | null>(null);
+  const setOption = (i: number) => (value: string) => setOptions((prev) => prev.map((o, j) => (j === i ? value : o)));
+  const styled = /<[bui]>/i.test([text, ...options].join(""));
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -822,10 +863,15 @@ function QuestionForm({
 
   return (
     <form onSubmit={submit} className="mt-3 rounded-btn border border-dashed border-pewter/50 bg-white p-4">
-      <p className="font-display text-sm font-bold tracking-tight">{title}</p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="font-display text-sm font-bold tracking-tight">{title}</p>
+        <FormatButtons field={() => focused.current} />
+      </div>
       <textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
+        onFocus={(e) => (focused.current = { el: e.currentTarget, set: setText })}
+        onPaste={(e) => pasteFormatted(e, setText)}
         placeholder="Question text…"
         rows={2}
         className="mt-3 w-full rounded-btn border border-smoke px-3 py-2.5 text-sm outline-none focus:border-brand-navy"
@@ -844,14 +890,34 @@ function QuestionForm({
             <input
               type="text"
               value={opt}
-              onChange={(e) => setOptions((prev) => prev.map((o, j) => (j === i ? e.target.value : o)))}
+              onChange={(e) => setOption(i)(e.target.value)}
+              onFocus={(e) => (focused.current = { el: e.currentTarget, set: setOption(i) })}
+              onPaste={(e) => pasteFormatted(e, setOption(i))}
               placeholder={`Option ${String.fromCharCode(65 + i)}`}
               className="w-full rounded-btn border border-smoke px-3 py-2 text-sm outline-none focus:border-brand-navy"
             />
           </div>
         ))}
       </div>
-      <p className="mt-2 text-[13px] text-pewter">Tick the radio next to the correct answer.</p>
+      <p className="mt-2 text-[13px] text-pewter">
+        Tick the radio next to the correct answer. Select words and press B, U or I to make them bold, underlined or
+        italic; text pasted from Word keeps its styling.
+      </p>
+      {styled && (
+        <div className="mt-2 rounded-btn bg-mist p-3 text-sm">
+          <p className="text-[12px] font-semibold uppercase tracking-wide text-pewter">What students see</p>
+          <p className="mt-1 font-semibold">
+            <RichText text={text} />
+          </p>
+          <ul className="mt-1 text-graphite">
+            {options.filter((o) => o.trim()).map((o, i) => (
+              <li key={i}>
+                {String.fromCharCode(65 + i)}. <RichText text={o} />
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {formError && <p className="mt-2 text-sm font-semibold text-brand-red" role="alert">{formError}</p>}
       <div className="mt-3 flex gap-3">
         <button
@@ -891,7 +957,7 @@ function QuestionEditor({
   async function removeQuestion(qi: number) {
     const ok = await confirm({
       title: `Remove question ${qi + 1}?`,
-      message: <>“{exam.questions[qi].text}” will be removed from {exam.title}. This can’t be undone.</>,
+      message: <>“{plainText(exam.questions[qi].text)}” will be removed from {exam.title}. This can’t be undone.</>,
       confirmLabel: "Remove question",
       danger: true,
     });
@@ -933,7 +999,7 @@ function QuestionEditor({
                 <div className="flex items-start justify-between gap-3">
                   <p className="text-sm font-semibold">
                     <span className="mr-2 text-pewter">{qi + 1}.</span>
-                    {q.text}
+                    <RichText text={q.text} />
                   </p>
                   {access !== "view" && (
                     <div className="flex shrink-0 gap-3">
@@ -961,7 +1027,7 @@ function QuestionEditor({
                 <ul className="mt-2 space-y-1 text-sm text-graphite">
                   {q.options.map((opt, oi) => (
                     <li key={oi} className={oi === q.correctIndex ? "font-bold text-brand-green" : ""}>
-                      {String.fromCharCode(65 + oi)}. {opt}
+                      {String.fromCharCode(65 + oi)}. <RichText text={opt} />
                       {oi === q.correctIndex ? " (correct)" : ""}
                     </li>
                   ))}
@@ -1039,6 +1105,7 @@ function PasteQuestions({
   onSave: (questions: Exam["questions"]) => Promise<boolean>;
 }) {
   const [text, setText] = useState("");
+  const box = useRef<HTMLTextAreaElement>(null);
   const parsed = useMemo(() => parseQuestions(text), [text]);
   // Pasted questions go after the ones already there, so number them on from those.
   const numberOf = (q: { number: number }) => exam.questions.length + q.number;
@@ -1060,14 +1127,21 @@ function PasteQuestions({
 
   return (
     <div className="mt-3 rounded-btn border border-dashed border-pewter/50 p-4">
-      <p className="font-display text-sm font-bold tracking-tight">Paste questions</p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="font-display text-sm font-bold tracking-tight">Paste questions</p>
+        <FormatButtons field={() => (box.current ? { el: box.current, set: setText } : null)} />
+      </div>
       <p className="mt-1 text-[13px] text-pewter">
         Paste from Word or type them in. End every question with an <strong>Answer:</strong> line; numbering and blank
-        lines are optional. An <strong>Explanation:</strong> line is allowed and is never shown to students.
+        lines are optional. An <strong>Explanation:</strong> line is allowed and is never shown to students. Bold,
+        underlined and italic words from Word are kept: in this box they show as &lt;b&gt;, &lt;u&gt; and &lt;i&gt;,
+        and the preview below shows them as students will see them.
       </p>
       <textarea
+        ref={box}
         value={text}
         onChange={(e) => setText(e.target.value)}
+        onPaste={(e) => pasteFormatted(e, setText)}
         placeholder={PASTE_EXAMPLE}
         rows={10}
         className="mt-3 w-full rounded-btn border border-smoke px-3 py-2.5 font-mono text-[13px] outline-none focus:border-brand-navy"
@@ -1088,12 +1162,12 @@ function PasteQuestions({
               >
                 <p className="font-semibold">
                   <span className="mr-2 text-pewter">{numberOf(q)}.</span>
-                  {q.text || <em className="text-pewter">(no question text)</em>}
+                  {q.text ? <RichText text={q.text} /> : <em className="text-pewter">(no question text)</em>}
                 </p>
                 <ul className="mt-1 space-y-0.5 text-graphite">
                   {q.options.map((opt, oi) => (
                     <li key={oi} className={oi === q.correctIndex ? "font-bold text-brand-green" : ""}>
-                      {String.fromCharCode(65 + oi)}. {opt}
+                      {String.fromCharCode(65 + oi)}. <RichText text={opt} />
                       {oi === q.correctIndex ? " (correct)" : ""}
                     </li>
                   ))}

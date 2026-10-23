@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PublicExam } from "@/lib/types";
+import RichText from "./RichText";
+import GuideTour from "./GuideTour";
+import { TEST_TOUR } from "@/lib/tours";
 
 export type SubmittedResult = {
   examTitle: string;
@@ -14,27 +17,29 @@ type SaveState = "saved" | "saving" | "retrying";
 
 const AUTOSAVE_DEBOUNCE_MS = 700;
 
-// Which question was on screen, so a refresh mid-test comes back to it.
-const placeKey = (examId: string) => `jdc-test-place:${examId}`;
-function readPlace(examId: string): number | null {
+// Which question was on screen, so a refresh mid-test comes back to it. Kept
+// per sitting: a retake, or the next candidate at this computer, starts afresh.
+const placeKey = (sittingId: string) => `jdc-test-place:${sittingId}`;
+function readPlace(sittingId: string): number | null {
   try {
-    const v = window.sessionStorage.getItem(placeKey(examId));
+    const v = window.sessionStorage.getItem(placeKey(sittingId));
     return v === null ? null : Number(v);
   } catch {
     return null;
   }
 }
-function keepPlace(examId: string, index: number) {
+function keepPlace(sittingId: string, index: number) {
   try {
-    window.sessionStorage.setItem(placeKey(examId), String(index));
+    window.sessionStorage.setItem(placeKey(sittingId), String(index));
   } catch {
     // Storage blocked: a refresh opens on the first unanswered question instead.
   }
 }
 
-/** "4, 7 and 12" */
+/** "4, 7 and 12"; a long list stops after ten: "1, 2, … 10 and 25 more". */
 function listNumbers(ns: number[]): string {
-  return ns.length > 1 ? `${ns.slice(0, -1).join(", ")} and ${ns[ns.length - 1]}` : String(ns[0]);
+  const shown = ns.length > 10 ? [...ns.slice(0, 10).map(String), `${ns.length - 10} more`] : ns.map(String);
+  return shown.length > 1 ? `${shown.slice(0, -1).join(", ")} and ${shown[shown.length - 1]}` : shown[0];
 }
 
 export default function TestRunner({
@@ -59,12 +64,19 @@ export default function TestRunner({
   const [error, setError] = useState("");
   // One question on screen at a time.
   const [current, setCurrent] = useState(0);
+  const sittingId = useRef(exam.id);
+  // Set when the student moves to another question, so focus follows (not on first load).
+  const [moved, setMoved] = useState(false);
+  // The time bar is pinned under the site menu; the same space is kept free for it here.
+  const barRef = useRef<HTMLDivElement>(null);
+  const [barHeight, setBarHeight] = useState(0);
 
   const submittedRef = useRef(false);
   const answersRef = useRef(answers);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onFinishedRef = useRef(onFinished);
   const questionRef = useRef<HTMLElement>(null);
+  const headingRef = useRef<HTMLParagraphElement>(null);
 
   answersRef.current = answers;
   onFinishedRef.current = onFinished;
@@ -104,8 +116,9 @@ export default function TestRunner({
           Number.isInteger(d.answers?.[i]) ? d.answers[i] : null
         );
         setAnswers(restored);
+        sittingId.current = d.sittingId ?? exam.id;
         // Back where they were after a refresh; otherwise the first question still to answer.
-        const place = readPlace(exam.id);
+        const place = readPlace(sittingId.current);
         const firstOpen = restored.findIndex((a) => a === null);
         setCurrent(
           place !== null && place >= 0 && place < exam.questions.length ? place : Math.max(firstOpen, 0)
@@ -168,10 +181,26 @@ export default function TestRunner({
   function goTo(index: number) {
     const i = Math.min(Math.max(index, 0), exam.questions.length - 1);
     setCurrent(i);
-    keepPlace(exam.id, i);
+    setMoved(true);
+    keepPlace(sittingId.current, i);
     // Pressing a number at the bottom of a phone screen brings the question back into view.
     questionRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }
+
+  // Keyboard and screen-reader users land on the new question, which is read out.
+  useEffect(() => {
+    if (moved) headingRef.current?.focus({ preventScroll: true });
+  }, [current, moved]);
+
+  useEffect(() => {
+    const bar = barRef.current;
+    if (!bar) return;
+    const fit = () => setBarHeight(bar.offsetHeight);
+    fit();
+    const watch = new ResizeObserver(fit);
+    watch.observe(bar);
+    return () => watch.disconnect();
+  }, [starting, startError]);
 
   async function submit(auto = false) {
     if (submittedRef.current) return;
@@ -278,8 +307,8 @@ export default function TestRunner({
   const total = secondsLeft ?? 0;
   const mins = Math.floor(total / 60);
   const secs = total % 60;
-  const low = total <= 60;
-  const soon = total <= 5 * 60;
+  const lastMinute = total <= 60;
+  const underFiveMinutes = total <= 5 * 60;
   const count = exam.questions.length;
   const q = exam.questions[current];
   const last = current === count - 1;
@@ -287,11 +316,11 @@ export default function TestRunner({
   return (
     <div>
       {/*
-        Pinned to the top of the screen, over the site menu (the same height),
-        so the time is never out of sight however far they scroll. The page
-        header below keeps the question clear of it.
+        Pinned just under the site menu (h-14), so the time is never out of
+        sight however far they scroll; the menu's own dropdown still opens
+        over it. The spacer below keeps the question clear of it.
       */}
-      <div className="fixed inset-x-0 top-0 z-50 border-b border-smoke bg-white px-4 py-3 shadow-sm">
+      <div ref={barRef} className="fixed inset-x-0 top-14 z-30 border-b border-smoke bg-white px-4 py-3 shadow-sm">
         <div className="mx-auto flex max-w-[760px] items-center justify-between gap-4">
           <div className="min-w-0">
             <p className="truncate font-display text-sm font-bold tracking-tight">{exam.title}</p>
@@ -313,11 +342,12 @@ export default function TestRunner({
             </p>
           </div>
           <div
+            data-tour="test-timer"
             className={`shrink-0 rounded-btn px-4 py-2 text-center ${
-              low ? "animate-pulse bg-brand-red text-white" : soon ? "bg-brand-gold text-ink" : "bg-brand-navy text-white"
+              lastMinute ? "animate-pulse bg-brand-red text-white" : underFiveMinutes ? "bg-brand-gold text-ink" : "bg-brand-navy text-white"
             }`}
             role="timer"
-            aria-live={low ? "assertive" : "off"}
+            aria-live={lastMinute ? "assertive" : "off"}
             aria-label={`Time left ${mins} minutes ${secs} seconds`}
           >
             <span className="block text-[11px] font-semibold uppercase tracking-wide opacity-80">Time left</span>
@@ -328,13 +358,25 @@ export default function TestRunner({
         </div>
       </div>
 
+      <div style={{ height: barHeight }} aria-hidden="true" />
+
       <div className="mx-auto max-w-[760px]">
-        <section ref={questionRef} aria-labelledby="question-title" className="scroll-mt-32 rounded-card border border-smoke bg-white p-5 md:p-6">
+        <div className="mb-3 flex justify-end">
+          {/* Only when asked: a tour starting by itself would eat into the timer. */}
+          <GuideTour id="test-runner-v1" steps={TEST_TOUR} label="How this test works" autoStart={false} tone="light" />
+        </div>
+        <section data-tour="test-question" ref={questionRef} aria-labelledby="question-title" className="scroll-mt-32 rounded-card border border-smoke bg-white p-5 md:p-6">
           <p className="text-[13px] font-semibold uppercase tracking-wide text-pewter">
             Question {current + 1} of {count}
           </p>
-          <p id="question-title" className="mt-2 text-lg font-semibold leading-snug">
-            {q.text}
+          <p
+            id="question-title"
+            ref={headingRef}
+            tabIndex={-1}
+            className="mt-2 text-lg font-semibold leading-snug outline-none"
+          >
+            <span className="sr-only">Question {current + 1} of {count}. </span>
+            <RichText text={q.text} />
           </p>
           <div className="mt-5 grid gap-2" role="radiogroup" aria-labelledby="question-title">
             {q.options.map((opt, oi) => {
@@ -363,13 +405,15 @@ export default function TestRunner({
                   >
                     {String.fromCharCode(65 + oi)}
                   </span>
-                  <span className="text-sm font-medium">{opt}</span>
+                  <span className="text-sm font-medium">
+                    <RichText text={opt} />
+                  </span>
                 </label>
               );
             })}
           </div>
 
-          <div className="mt-6 flex items-center justify-between gap-3">
+          <div data-tour="test-move" className="mt-6 flex items-center justify-between gap-3">
             <button
               type="button"
               onClick={() => goTo(current - 1)}
@@ -379,15 +423,9 @@ export default function TestRunner({
               Previous
             </button>
             {last ? (
-              <button
-                type="button"
-                disabled={submitting}
-                onClick={() => submit(false)}
-                className="cursor-pointer rounded-btn bg-brand-red px-5 py-2.5 text-sm font-semibold text-white transition-colors duration-200 hover:bg-brand-red-dark disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {submitting ? "Submitting…" : "Submit test"}
-              </button>
-            ) : (
+              <p className="text-right text-[13px] text-graphite">
+                That&rsquo;s the last question. Check the numbers below, then press Submit test.
+              </p>            ) : (
               <button
                 type="button"
                 onClick={() => goTo(current + 1)}
@@ -400,11 +438,9 @@ export default function TestRunner({
         </section>
 
         {/* Every question by number: answered ones filled in; press one to go to it. */}
-        <nav aria-label="Questions" className="mt-6 rounded-card border border-smoke bg-white p-5">
+        <nav data-tour="test-grid" aria-label="Questions" className="mt-6 rounded-card border border-smoke bg-white p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="font-display text-sm font-bold tracking-tight">
-              {answered} of {count} answered
-            </p>
+            <p className="font-display text-sm font-bold tracking-tight">Questions</p>
             <p className="flex flex-wrap items-center gap-3 text-[12px] text-graphite">
               <span className="flex items-center gap-1.5">
                 <span className="h-3 w-3 rounded-[3px] bg-brand-navy" aria-hidden="true" /> Answered
@@ -448,6 +484,7 @@ export default function TestRunner({
           )}
           <button
             type="button"
+            data-tour="test-submit"
             disabled={submitting}
             onClick={() => submit(false)}
             className="w-full cursor-pointer rounded-btn bg-brand-red px-6 py-4 font-semibold text-white transition-colors duration-200 hover:bg-brand-red-dark disabled:cursor-not-allowed disabled:opacity-60"

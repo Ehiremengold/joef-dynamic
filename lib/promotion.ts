@@ -38,3 +38,15 @@ export function defaultTargetSession(sessions: AcademicSession[], currentTerm: T
 
 /** "2026/2027" → "2026", to compare against a student's entry year. */
 export const sessionStartYear = (name: string): string => name.slice(0, 4);
+
+/** "2026/2027" → "2025/2026": the session before (a graduate moved into 2026/2027 finished 2025/2026). */
+export function previousSessionName(name: string): string {
+  const start = Number(sessionStartYear(name));
+  return `${start - 1}/${start}`;
+}
+
+/** SS3 has no level after it: its students graduate rather than move up. */
+export const graduates = (level: ClassName): boolean => nextLevel(level) === null;
+
+/** What the Promotion tab does to a class's students: "graduate" for SS3, "move" for the rest. */
+export const moveVerb = (level: ClassName): "graduate" | "move" => (graduates(level) ? "graduate" : "move");

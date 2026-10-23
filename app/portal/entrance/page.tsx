@@ -73,22 +73,25 @@ export default function EntrancePage() {
     <>
       <Nav />
       <main className="min-h-[70vh] bg-mist">
-        <section className="bg-brand-navy text-white">
-          <div className="mx-auto max-w-[1200px] px-4 py-10">
-            <div className="flex flex-wrap items-end justify-between gap-4">
-              <div>
-                <Link href="/portal" className="text-sm text-white/70 transition-colors duration-200 hover:text-brand-gold">
-                  ← Portal home
-                </Link>
-                <h1 className="mt-3 font-display text-3xl font-bold tracking-tight md:text-4xl">
-                  Common Entrance Test
-                </h1>
+        {/* Put away during the test: the time bar sits there instead. */}
+        {step !== "test" && (
+          <section className="bg-brand-navy text-white">
+            <div className="mx-auto max-w-[1200px] px-4 py-10">
+              <div className="flex flex-wrap items-end justify-between gap-4">
+                <div>
+                  <Link href="/portal" className="text-sm text-white/70 transition-colors duration-200 hover:text-brand-gold">
+                    ← Portal home
+                  </Link>
+                  <h1 className="mt-3 font-display text-3xl font-bold tracking-tight md:text-4xl">
+                    Common Entrance Test
+                  </h1>
+                </div>
+                {/* Only before the test starts: a tour mid-test would eat into the timer. */}
+                {step === "register" && <GuideTour id="entrance-v2" steps={ENTRANCE_TOUR} />}
               </div>
-              {/* Only before the test starts: a tour mid-test would eat into the timer. */}
-              {step === "register" && <GuideTour id="entrance-v2" steps={ENTRANCE_TOUR} />}
             </div>
-          </div>
-        </section>
+          </section>
+        )}
 
         <section className="mx-auto max-w-[1200px] px-4 py-10">
           {step === "register" && (

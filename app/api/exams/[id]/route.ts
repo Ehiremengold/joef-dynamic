@@ -4,6 +4,7 @@ import { AuthError, currentStaff, requireStaff } from "@/lib/auth/staff";
 import { examAccess } from "@/lib/roles";
 import { getTakerSession } from "@/lib/auth/session";
 import { activeAfterScheduleChange } from "@/lib/examSchedule";
+import { plainText } from "@/lib/richText";
 import {
   deleteExam,
   getExam,
@@ -80,12 +81,13 @@ export async function PUT(req: NextRequest, { params }: Params) {
       const cleaned = [];
       for (const q of body.questions) {
         const options = Array.isArray(q.options)
-          ? q.options.map((o: unknown) => String(o ?? "").trim()).filter(Boolean)
+          ? q.options.map((o: unknown) => String(o ?? "").trim().normalize("NFC")).filter((o: string) => plainText(o).trim())
           : [];
         const correctIndex = Number(q.correctIndex);
         if (
           typeof q.text !== "string" ||
-          !q.text.trim() ||
+          // Bold/underline marks alone (lib/richText) aren't a question.
+          !plainText(q.text).trim() ||
           options.length < 2 ||
           !Number.isInteger(correctIndex) ||
           correctIndex < 0 ||
@@ -99,7 +101,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
             { status: 400 }
           );
         }
-        cleaned.push({ text: q.text.trim(), options, correctIndex });
+        cleaned.push({ text: q.text.trim().normalize("NFC"), options, correctIndex });
       }
       await replaceQuestions(id, cleaned);
     }

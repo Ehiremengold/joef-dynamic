@@ -26,6 +26,9 @@ export default function CbtPage() {
       : null;
   const loading = meQ.isPending;
   const [tab, setTab] = useState<"take" | "results">("take");
+  // While a test is running the page header (tabs, sign out) is put away: the time bar sits there
+  // instead, and switching tab mid-test would leave the test.
+  const [testing, setTesting] = useState(false);
   const { refetch } = meQ;
 
   // A shared school computer: the next student must never see the last one's cached tests or scores.
@@ -44,62 +47,64 @@ export default function CbtPage() {
     <>
       <Nav />
       <main className="min-h-[70vh] bg-mist">
-        <section className="bg-brand-navy text-white">
-          <div className="mx-auto max-w-[1200px] px-4 py-10">
-            <div className="flex flex-wrap items-end justify-between gap-4">
-              <div>
-                <Link href="/portal" className="text-sm text-white/70 transition-colors duration-200 hover:text-brand-gold">
-                  ← Portal home
-                </Link>
-                <h1 className="mt-3 font-display text-3xl font-bold tracking-tight md:text-4xl">
-                  Student CBT &amp; Results
-                </h1>
-                {me && (
-                  <p className="mt-1 text-sm text-white/70">
-                    {me.fullName} · {me.className}
-                  </p>
+        {!(testing && me) && (
+          <section className="bg-brand-navy text-white">
+            <div className="mx-auto max-w-[1200px] px-4 py-10">
+              <div className="flex flex-wrap items-end justify-between gap-4">
+                <div>
+                  <Link href="/portal" className="text-sm text-white/70 transition-colors duration-200 hover:text-brand-gold">
+                    ← Portal home
+                  </Link>
+                  <h1 className="mt-3 font-display text-3xl font-bold tracking-tight md:text-4xl">
+                    Student CBT &amp; Results
+                  </h1>
+                  {me && (
+                    <p className="mt-1 text-sm text-white/70">
+                      {me.fullName} · {me.className}
+                    </p>
+                  )}
+                </div>
+                {!loading && (
+                  <div className="flex flex-wrap gap-2">
+                    {me ? (
+                      <GuideTour id="student-area-v2" steps={STUDENT_AREA_TOUR} />
+                    ) : (
+                      <GuideTour id="student-signin-v1" steps={STUDENT_SIGNIN_TOUR} />
+                    )}
+                    {me && (
+                      <button
+                        type="button"
+                        data-tour="student-signout"
+                        onClick={signOut}
+                        className="cursor-pointer rounded-btn border border-white/40 px-4 py-2 text-sm font-semibold text-white transition-colors duration-200 hover:bg-white hover:text-ink"
+                      >
+                        Sign out
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
-              {!loading && (
-                <div className="flex flex-wrap gap-2">
-                  {me ? (
-                    <GuideTour id="student-area-v2" steps={STUDENT_AREA_TOUR} />
-                  ) : (
-                    <GuideTour id="student-signin-v1" steps={STUDENT_SIGNIN_TOUR} />
-                  )}
-                  {me && (
-                    <button
-                      type="button"
-                      data-tour="student-signout"
-                      onClick={signOut}
-                      className="cursor-pointer rounded-btn border border-white/40 px-4 py-2 text-sm font-semibold text-white transition-colors duration-200 hover:bg-white hover:text-ink"
-                    >
-                      Sign out
-                    </button>
+              {me && (
+                <div data-tour="student-tabs" className="mt-6 flex gap-2">
+                  {([["take", "Take a test"], ["results", "My results"]] as const).map(
+                    ([key, label]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setTab(key)}
+                        className={`cursor-pointer rounded-btn px-4 py-2 text-sm font-semibold transition-colors duration-200 ${
+                          tab === key ? "bg-brand-gold text-ink" : "bg-white/10 text-white hover:bg-white/20"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    )
                   )}
                 </div>
               )}
             </div>
-            {me && (
-              <div data-tour="student-tabs" className="mt-6 flex gap-2">
-                {([["take", "Take a test"], ["results", "My results"]] as const).map(
-                  ([key, label]) => (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => setTab(key)}
-                      className={`cursor-pointer rounded-btn px-4 py-2 text-sm font-semibold transition-colors duration-200 ${
-                        tab === key ? "bg-brand-gold text-ink" : "bg-white/10 text-white hover:bg-white/20"
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  )
-                )}
-              </div>
-            )}
-          </div>
-        </section>
+          </section>
+        )}
 
         <section className="mx-auto max-w-[1200px] px-4 py-10">
           {loading ? (
@@ -107,7 +112,7 @@ export default function CbtPage() {
           ) : !me ? (
             <StudentLogin onSignedIn={refresh} />
           ) : tab === "take" ? (
-            <TakeTest me={me} onExpired={refresh} />
+            <TakeTest me={me} onExpired={refresh} onTesting={setTesting} />
           ) : (
             <MyResults />
           )}
@@ -185,7 +190,15 @@ function StudentLogin({ onSignedIn }: { onSignedIn: () => void }) {
   );
 }
 
-function TakeTest({ me, onExpired }: { me: NonNullable<Me>; onExpired: () => void }) {
+function TakeTest({
+  me,
+  onExpired,
+  onTesting,
+}: {
+  me: NonNullable<Me>;
+  onExpired: () => void;
+  onTesting: (testing: boolean) => void;
+}) {
   const [step, setStep] = useState<"pick" | "test" | "done">("pick");
   const invalidate = useInvalidate();
   const examsQ = useApi<{ exams: PublicExam[]; upcoming?: Upcoming[]; serverNow?: string }>("/api/exams?type=class", onExpired, {
@@ -217,6 +230,11 @@ function TakeTest({ me, onExpired }: { me: NonNullable<Me>; onExpired: () => voi
   const examId = chosenExam || (exams.length === 1 ? exams[0].id : "");
 
   const exam = exams.find((e) => e.id === examId);
+  const inTest = step === "test" && !!exam;
+  useEffect(() => {
+    onTesting(inTest);
+    return () => onTesting(false);
+  }, [inTest, onTesting]);
 
   if (step === "test" && exam) {
     return (

@@ -729,3 +729,32 @@ export function staffTabTour(tab: StaffTab, role: StaffRole): TourStep[] {
       return approvalsTour(role);
   }
 }
+
+/** Inside a test, from its "How this test works" button (never by itself: the clock is running). */
+export const TEST_TOUR: TourStep[] = [
+  {
+    target: "test-timer",
+    title: "Time left",
+    text: "Your time, always at the top of the screen. It turns gold with 5 minutes left and red in the last minute. At zero your test is submitted automatically.",
+  },
+  {
+    target: "test-question",
+    title: "One question at a time",
+    text: "Pick an answer by pressing it. Your answer saves straight away, and you can change it any time before you submit.",
+  },
+  {
+    target: "test-move",
+    title: "Next and Previous",
+    text: "Press Next to go on to the next question, or Previous to go back.",
+  },
+  {
+    target: "test-grid",
+    title: "All your questions",
+    text: "Every question by number. Filled-in numbers are answered, empty ones aren't, and the one with a gold ring is on screen now. Press a number to go straight to that question.",
+  },
+  {
+    target: "test-submit",
+    title: "Submit test",
+    text: "When you have finished, press Submit test. You'll be told if any question has no answer before it is sent.",
+  },
+];

@@ -92,6 +92,8 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({
+      // Which sitting this is: a retake, or the next candidate at this computer, is a different one.
+      sittingId: session.id,
       answers: session.answers,
       secondsLeft: secondsLeft(session, exam),
     });

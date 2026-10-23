@@ -215,7 +215,12 @@ export default function RosterPanel({
             <FilterSelect
               label="In school during"
               value={filters.sessionId}
-              onChange={(sessionId) => setFilter({ sessionId, termId: "" })}
+              onChange={(sessionId) => {
+                // Who was in school in a past session includes those who have left or graduated since,
+                // so the "at school now" default would hide them. A status chosen on purpose stays.
+                const past = sessionId !== "" && !sessions.find((x) => x.id === sessionId)?.isCurrent;
+                setFilter({ sessionId, termId: "", ...(past && filters.status === "active" ? { status: "" } : {}) });
+              }}
             >
               <option value="">Any session</option>
               {[...sessions]

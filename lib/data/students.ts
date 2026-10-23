@@ -5,7 +5,8 @@ import type { Page } from "@/lib/paging";
 import type { DeletionImpact } from "@/lib/recordChanges";
 import type { ClassName, Student } from "@/lib/types";
 import { clearStudent } from "./loginThrottle";
-import { readPage } from "./paging";
+import { readAll, readPage } from "./paging";
+import { previousSessionName } from "@/lib/promotion";
 
 type Row = Record<string, unknown>;
 
@@ -143,15 +144,15 @@ async function withGraduations(page: Page<Student>): Promise<Page<Student>> {
     .from("student_promotions")
     .select("student_id, academic_sessions(name)")
     .eq("outcome", "graduated")
-    .in("student_id", inactive);
+    .in("student_id", inactive)
+    // Graduated more than once (reactivated, then graduated again): the latest counts.
+    .order("created_at", { ascending: true });
   if (error) throw new Error(error.message);
-  const finished = new Map(
-    ((data ?? []) as unknown as Row[]).map((r) => {
-      const into = ((r.academic_sessions as Row | null)?.name as string | undefined) ?? "";
-      const start = Number(into.slice(0, 4));
-      return [r.student_id as string, start ? `${start - 1}/${start}` : null];
-    })
-  );
+  const finished = new Map<string, string | null>();
+  for (const r of (data ?? []) as unknown as Row[]) {
+    const into = (r.academic_sessions as Row | null)?.name as string | undefined;
+    finished.set(r.student_id as string, into ? previousSessionName(into) : null);
+  }
   return { ...page, rows: page.rows.map((s) => (finished.has(s.id) ? { ...s, graduatedFrom: finished.get(s.id) } : s)) };
 }
 
@@ -227,17 +228,10 @@ export async function findSimilarStudents(fullName: string): Promise<Student[]> 
   const need = Math.min(2, sharedNameWords(fullName, fullName));
   if (need === 0) return [];
   const supa = serviceClient();
-  const matches: Row[] = [];
-  for (let from = 0; ; from += 1000) {
-    const { data, error } = await supa
-      .from("students")
-      .select("*, classes(level, arm, campuses(name))")
-      .order("id")
-      .range(from, from + 999);
-    if (error) throw new Error(error.message);
-    for (const r of data ?? []) if (sharedNameWords(fullName, r.full_name as string) >= need) matches.push(r);
-    if (!data || data.length < 1000) break;
-  }
+  const everyone = await readAll((from, to) =>
+    supa.from("students").select("*, classes(level, arm, campuses(name))").order("id").range(from, to)
+  );
+  const matches = everyone.filter((r) => sharedNameWords(fullName, r.full_name as string) >= need);
   return matches.slice(0, 5).map(mapStudent);
 }
 

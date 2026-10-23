@@ -1,6 +1,7 @@
 import "server-only";
 import { serviceClient } from "@/lib/supabase/server";
 import { classLabel } from "@/lib/classes";
+import { readAll } from "./paging";
 import type { ClassName, Promotion, PromotionCandidate, PromotionOutcome } from "@/lib/types";
 
 type Row = Record<string, unknown>;
@@ -34,49 +35,34 @@ export async function listPromotionCandidates(classId: string, sessionId: string
     }));
 }
 
+/** For one class: students still to move into the session, and how many are active there at all. */
+export type ClassProgress = { toMove: number; active: number };
+
 /**
- * How many students in each class still wait to be moved into the session:
- * active, not yet moved, and not new that session (a student who joined in
- * it is already in the right class, as the Promotion tab assumes). Classes
- * with nobody waiting are left out. For SS3 these are the students still to
- * graduate.
+ * Where each class stands for the session. `toMove` counts the students the
+ * Promotion tab starts on Promote or Graduate: active, not yet moved, and not
+ * new that session (a student who joined in it is already in the right class,
+ * so they start on "Not now" and aren't counted). For SS3 these are the
+ * students still to graduate. Classes with no active students are left out.
  */
-export async function promotionProgress(sessionId: string, sessionStartYear: string): Promise<Map<string, number>> {
+export async function promotionProgress(sessionId: string, sessionStartYear: string): Promise<Map<string, ClassProgress>> {
   const supa = serviceClient();
-  // More students than one page of PostgREST rows: read them in pages.
-  const students: Row[] = [];
-  for (let from = 0; ; from += 1000) {
-    const { data, error } = await supa
-      .from("students")
-      .select("id, class_id, entry_year")
-      .eq("active", true)
-      .not("class_id", "is", null)
-      .lt("entry_year", sessionStartYear)
-      .order("id")
-      .range(from, from + 999);
-    if (error) throw new Error(error.message);
-    students.push(...(data ?? []));
-    if ((data ?? []).length < 1000) break;
-  }
-  const moved = new Set<string>();
-  for (let from = 0; ; from += 1000) {
-    const { data, error } = await supa
-      .from("student_promotions")
-      .select("student_id")
-      .eq("session_id", sessionId)
-      .order("id")
-      .range(from, from + 999);
-    if (error) throw new Error(error.message);
-    for (const r of data ?? []) moved.add(r.student_id as string);
-    if ((data ?? []).length < 1000) break;
-  }
-  const waiting = new Map<string, number>();
+  const [students, moves] = await Promise.all([
+    readAll((from, to) =>
+      supa.from("students").select("id, class_id, entry_year").eq("active", true).not("class_id", "is", null).order("id").range(from, to)
+    ),
+    readAll((from, to) => supa.from("student_promotions").select("student_id").eq("session_id", sessionId).order("id").range(from, to)),
+  ]);
+  const moved = new Set(moves.map((r) => r.student_id as string));
+  const progress = new Map<string, ClassProgress>();
   for (const st of students) {
-    if (moved.has(st.id as string)) continue;
     const classId = st.class_id as string;
-    waiting.set(classId, (waiting.get(classId) ?? 0) + 1);
+    const p = progress.get(classId) ?? { toMove: 0, active: 0 };
+    p.active += 1;
+    if (!moved.has(st.id as string) && (st.entry_year as string) < sessionStartYear) p.toMove += 1;
+    progress.set(classId, p);
   }
-  return waiting;
+  return progress;
 }
 
 /** Moves already made out of this class into the session, newest first. */
