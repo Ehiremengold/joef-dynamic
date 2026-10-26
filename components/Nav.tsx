@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import ScrollProgress from "./fx/ScrollProgress";
 import { PAGE_WIDTH } from "./pageWidth";
@@ -16,49 +16,69 @@ const links = [
   { label: "Visit", href: "/#visit" },
 ];
 
-/** `wide` matches the staff section's wider column so the edges line up. */
+/**
+ * `wide` matches the staff section's wider column so the edges line up.
+ * The links sit in a row from lg (1024px) up, where they fit on one line
+ * beside the name and "Enrol now"; narrower screens (tablets, phones) get
+ * the menu button instead.
+ */
 export default function Nav({ wide = false }: { wide?: boolean }) {
   const [open, setOpen] = useState(false);
+
+  // Escape closes the menu; so does widening the window until the links show in the row.
+  useEffect(() => {
+    if (!open) return;
+    const wideEnough = window.matchMedia("(min-width: 1024px)");
+    const close = () => setOpen(false);
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
+    const onResize = () => wideEnough.matches && close();
+    document.addEventListener("keydown", onKey);
+    wideEnough.addEventListener("change", onResize);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      wideEnough.removeEventListener("change", onResize);
+    };
+  }, [open]);
 
   return (
     <header className="sticky top-0 z-40 border-b border-hairline bg-white/90 backdrop-blur-xl">
       <ScrollProgress />
-      <div className={`mx-auto flex h-14 items-center justify-between px-6 ${wide ? PAGE_WIDTH.wide : PAGE_WIDTH.standard}`}>
-        <Link href="/" className="flex items-center gap-2.5">
+      <div className={`mx-auto flex h-14 items-center justify-between gap-4 px-4 sm:px-6 ${wide ? PAGE_WIDTH.wide : PAGE_WIDTH.standard}`}>
+        <Link href="/" className="flex min-w-0 shrink-0 items-center gap-2.5">
           <Image
             src="/images/logo.png"
             alt="Joef Dynamic College crest"
             width={34}
             height={34}
-            className="h-[34px] w-[34px] object-contain"
+            className="h-[34px] w-[34px] shrink-0 object-contain"
           />
-          <span className="font-display text-[17px] font-semibold tracking-tight text-brand-navy">
+          <span className="whitespace-nowrap font-display text-[17px] font-semibold tracking-tight text-brand-navy">
             Joef Dynamic College
           </span>
         </Link>
 
-        <nav className="hidden items-center gap-7 md:flex" aria-label="Primary">
+        <nav className="hidden items-center gap-6 lg:flex xl:gap-7" aria-label="Primary">
           {links.map((l) => (
             <Link
               key={l.href}
               href={l.href}
-              className="text-sm text-graphite transition-colors duration-200 hover:text-ink"
+              className="whitespace-nowrap text-sm text-graphite transition-colors duration-200 hover:text-ink"
             >
               {l.label}
             </Link>
           ))}
         </nav>
 
-        <div className="flex items-center gap-3">
+        <div className="flex shrink-0 items-center gap-3">
           <a
             href="/#visit"
-            className="hidden rounded-full bg-brand-red px-4 py-1.5 text-sm font-medium text-white transition-colors duration-200 hover:bg-brand-red-dark sm:inline-block"
+            className="hidden whitespace-nowrap rounded-full bg-brand-red px-4 py-1.5 text-sm font-medium text-white transition-colors duration-200 hover:bg-brand-red-dark sm:inline-block"
           >
             Enrol now
           </a>
           <button
             type="button"
-            className="cursor-pointer p-2 md:hidden"
+            className="cursor-pointer p-2 lg:hidden"
             aria-label={open ? "Close menu" : "Open menu"}
             aria-expanded={open}
             onClick={() => setOpen(!open)}
@@ -90,10 +110,10 @@ export default function Nav({ wide = false }: { wide?: boolean }) {
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-            className="overflow-hidden border-t border-hairline bg-white md:hidden"
+            className="overflow-hidden border-t border-hairline bg-white lg:hidden"
             aria-label="Mobile"
           >
-            <ul className="flex flex-col gap-1 px-6 py-4">
+            <ul className="flex flex-col gap-1 px-4 py-4 sm:px-6">
               {links.map((l, i) => (
                 <motion.li
                   key={l.href}
