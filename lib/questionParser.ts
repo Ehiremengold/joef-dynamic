@@ -1,3 +1,5 @@
+import { dropLeading, MARK_TAG, plainText, tidy } from "./richText";
+
 /**
  * Turns a block of pasted questions — typed as plain text or copied out of a
  * Word document — into exam questions:
@@ -14,12 +16,10 @@
  * several on a line set apart by a tab or spaces, and answers as
  * "Answer: B", "Ans - b", "Correct answer: (B)".
  *
- * Text may carry bold/underline/italic marks (lib/richText), as pasted from
- * Word. Lines are recognised by their words alone; the marks are kept on
- * the question and option text.
+ * Text may carry bold/underline/italic/superscript/subscript marks
+ * (lib/richText), as pasted from Word. Lines are recognised by their words
+ * alone; the marks are kept on the question and option text.
  */
-import { dropLeading, plainText, tidy } from "./richText";
-
 
 export type ParsedQuestion = {
   /** 1-based position in the pasted text, for messages. */
@@ -68,7 +68,7 @@ function finish(d: Draft, number: number): ParsedQuestion {
 }
 
 // Where the next option starts on a line of several: a tab or two spaces, then "b." (marks allowed between).
-const NEXT_OPTION = /(?:\t|[ ]{2,})(?=(?:<\/?[bui]>)*\(?[b-h]\s*[.):]\s)/i;
+const NEXT_OPTION = new RegExp(`(?:\\t|[ ]{2,})(?=(?:${MARK_TAG})*\\(?[b-h]\\s*[.):]\\s)`, "i");
 
 export function parseQuestions(input: string): ParsedQuestion[] {
   const lines = input

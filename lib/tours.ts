@@ -270,7 +270,12 @@ function examsTour(role: StaffRole): TourStep[] {
     {
       target: "exam-questions",
       title: "Questions",
-      text: "Opens the question list. Choose “Paste questions” to paste a whole set from Word at once: end every question with an “Answer: B” line, check the preview, then press Add. Or choose “Add one question” and tick the correct option. The correct answer shows in green, and each question has Edit and Remove.",
+      text: "Opens the question list. Choose “Paste questions” to paste a whole set from Word at once: end every question with an “Answer: B” line, check the preview, then press Add. Or choose “Add one question” and tick the correct option. The boxes show text as students will see it, and anything pasted from Word keeps its styling. The correct answer shows in green, and each question has Edit and Remove.",
+    },
+    {
+      target: "question-toolbar",
+      title: "Formatting and symbols",
+      text: "B, U and I make words bold, underlined or italic. x² and x₂ make superscripts and subscripts, as in x² or H₂O: press one, type, then press it again to go back to normal, or select words already typed and press it. Symbols adds √, π, ±, Greek letters and chemistry arrows where the cursor is. Ctrl+B, Ctrl+I, Ctrl+U and Ctrl+Z work too.",
     },
     {
       target: "exam-schedule",
@@ -347,7 +352,7 @@ const STUDENTS_TOUR: TourStep[] = [
   {
     target: "students-search",
     title: "Find students",
-    text: "Search by name, then narrow the list. Campus and Class: choose a campus to pick one of its classes and arms (e.g. Obalende · JS2A), or leave the campus open to see a level on every campus. Status: the list opens on students at school now; choose “Left or graduated” to see graduates (marked Graduated with the session they finished) and leavers, or “Everyone”. Entry year: the year they joined. In school during: pick a session, or one term of it. The current one lists every active student; a past one lists the students with results recorded then. The count shows how many match, and “Clear filters” starts again.",
+    text: "Search by name, then narrow the list. Campus and Class: choose a campus to pick one of its classes and arms (e.g. Obalende · JS2A), or leave the campus open to see a level on every campus. Status: the list opens on students at school now; choose “Left or graduated” to see graduates (marked Graduated with the session they finished) and leavers, or “Everyone”. Picking a past session switches Status to “Everyone”, so students who have left or graduated since are included. Entry year: the year they joined. In school during: pick a session, or one term of it. The current one lists every active student; a past one lists the students with results recorded then. The count shows how many match, and “Clear filters” starts again.",
   },
   {
     target: "students-table",

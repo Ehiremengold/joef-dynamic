@@ -2,11 +2,11 @@ import "server-only";
 import { serviceClient } from "@/lib/supabase/server";
 import { generatePin, hashPin, verifyPin } from "@/lib/auth/pin";
 import type { Page } from "@/lib/paging";
+import { previousSessionName } from "@/lib/promotion";
 import type { DeletionImpact } from "@/lib/recordChanges";
 import type { ClassName, Student } from "@/lib/types";
 import { clearStudent } from "./loginThrottle";
 import { readAll, readPage } from "./paging";
-import { previousSessionName } from "@/lib/promotion";
 
 type Row = Record<string, unknown>;
 

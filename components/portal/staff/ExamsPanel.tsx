@@ -14,8 +14,9 @@ import SendToScoresDialog from "./SendToScoresDialog";
 import Pagination from "./Pagination";
 import FilterSelect from "./FilterSelect";
 import RichText from "@/components/portal/RichText";
-import { plainText, type Mark } from "@/lib/richText";
-import { pasteFormatted, wrapSelection } from "./formattedPaste";
+import { plainText, tidy } from "@/lib/richText";
+import QuestionToolbar from "./QuestionToolbar";
+import RichField, { type RichFieldControls } from "./RichField";
 
 /** Cookie-authenticated fetch; calls onUnauthorized on a 401 so the shell re-checks. */
 type AuthFetch = (url: string, init?: RequestInit) => Promise<Response>;
@@ -775,40 +776,6 @@ function SittingsPanel({ exam, authFetch, access }: { exam: Exam; authFetch: Aut
 
 type QuestionDraft = Omit<Exam["questions"][number], "id" | "position">;
 
-type Field = { el: HTMLTextAreaElement | HTMLInputElement; set: (value: string) => void };
-
-/**
- * Bold / Underline / Italic for the question boxes. They wrap the selected
- * words in marks (lib/richText); pasting from Word keeps its own styling.
- */
-function FormatButtons({ field }: { field: () => Field | null }) {
-  const buttons: [Mark, string, string][] = [
-    ["b", "B", "font-bold"],
-    ["u", "U", "underline"],
-    ["i", "I", "italic"],
-  ];
-  return (
-    <div className="flex items-center gap-1">
-      {buttons.map(([mark, label, look]) => (
-        <button
-          key={mark}
-          type="button"
-          // Keep the selection in the box being typed in.
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => {
-            const f = field();
-            if (f) wrapSelection(f.el, mark, f.set);
-          }}
-          aria-label={{ b: "Bold", u: "Underline", i: "Italic" }[mark]}
-          className={`h-8 w-8 cursor-pointer rounded-btn border border-smoke bg-white text-sm ${look} hover:border-brand-navy`}
-        >
-          {label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 /** The question form, for adding a question or editing one. Empty options are dropped on save. */
 function QuestionForm({
   name,
@@ -837,20 +804,23 @@ function QuestionForm({
   const [options, setOptions] = useState(blankOptions);
   const [correctIndex, setCorrectIndex] = useState(initial?.correctIndex ?? 0);
   const [formError, setFormError] = useState("");
-  // The box the B / U / I buttons act on: the last one typed in.
-  const focused = useRef<Field | null>(null);
+  // The box the toolbar acts on: the last one typed in, or the question itself before any.
+  const focused = useRef<RichFieldControls | null>(null);
+  const questionBox = useRef<RichFieldControls | null>(null);
+  const target = () => focused.current ?? questionBox.current;
   const setOption = (i: number) => (value: string) => setOptions((prev) => prev.map((o, j) => (j === i ? value : o)));
-  const styled = /<[bui]>/i.test([text, ...options].join(""));
+  // Formatting alone ("<b></b>") isn't an answer.
+  const hasWords = (t: string) => plainText(t).trim() !== "";
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    const filled = options.map((o) => o.trim()).filter(Boolean);
-    if (!text.trim() || filled.length < 2) return setFormError("Enter the question and at least two options");
-    if (!options[correctIndex]?.trim()) return setFormError("The correct answer can't be an empty option");
-    const kept = options.map((o, i) => ({ o: o.trim(), i })).filter(({ o }) => o);
+    const filled = options.filter(hasWords);
+    if (!hasWords(text) || filled.length < 2) return setFormError("Enter the question and at least two options");
+    if (!hasWords(options[correctIndex] ?? "")) return setFormError("The correct answer can't be an empty option");
+    const kept = options.map((o, i) => ({ o: tidy(o), i })).filter(({ o }) => hasWords(o));
     setFormError("");
     const saved = await onSubmit({
-      text: text.trim(),
+      text: tidy(text),
       options: kept.map(({ o }) => o),
       correctIndex: kept.findIndex(({ i }) => i === correctIndex),
     });
@@ -865,17 +835,20 @@ function QuestionForm({
     <form onSubmit={submit} className="mt-3 rounded-btn border border-dashed border-pewter/50 bg-white p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="font-display text-sm font-bold tracking-tight">{title}</p>
-        <FormatButtons field={() => focused.current} />
+        <QuestionToolbar field={target} />
       </div>
-      <textarea
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onFocus={(e) => (focused.current = { el: e.currentTarget, set: setText })}
-        onPaste={(e) => pasteFormatted(e, setText)}
-        placeholder="Question text…"
-        rows={2}
-        className="mt-3 w-full rounded-btn border border-smoke px-3 py-2.5 text-sm outline-none focus:border-brand-navy"
-      />
+      <div className="mt-3">
+        <RichField
+          controlsRef={questionBox}
+          value={text}
+          onChange={setText}
+          onFocus={(controls) => (focused.current = controls)}
+          label="Question"
+          placeholder="Question text…"
+          multiline
+          minHeight="4.5rem"
+        />
+      </div>
       <div className="mt-3 grid gap-2 sm:grid-cols-2">
         {options.map((opt, i) => (
           <div key={i} className="flex items-center gap-2">
@@ -887,37 +860,23 @@ function QuestionForm({
               aria-label={`Mark option ${String.fromCharCode(65 + i)} as correct`}
               className="h-4 w-4 shrink-0 cursor-pointer accent-brand-green"
             />
-            <input
-              type="text"
-              value={opt}
-              onChange={(e) => setOption(i)(e.target.value)}
-              onFocus={(e) => (focused.current = { el: e.currentTarget, set: setOption(i) })}
-              onPaste={(e) => pasteFormatted(e, setOption(i))}
-              placeholder={`Option ${String.fromCharCode(65 + i)}`}
-              className="w-full rounded-btn border border-smoke px-3 py-2 text-sm outline-none focus:border-brand-navy"
-            />
+            <div className="min-w-0 flex-1">
+              <RichField
+                value={opt}
+                onChange={setOption(i)}
+                onFocus={(controls) => (focused.current = controls)}
+                label={`Option ${String.fromCharCode(65 + i)}`}
+                placeholder={`Option ${String.fromCharCode(65 + i)}`}
+              />
+            </div>
           </div>
         ))}
       </div>
       <p className="mt-2 text-[13px] text-pewter">
-        Tick the radio next to the correct answer. Select words and press B, U or I to make them bold, underlined or
-        italic; text pasted from Word keeps its styling.
+        Tick the radio next to the correct answer. B, U, I, x² and x₂ style the selected words, or what you type next
+        (press again to stop), and Symbols adds √, π, → and more. What you see in the boxes is what students see; text
+        pasted from Word keeps its styling.
       </p>
-      {styled && (
-        <div className="mt-2 rounded-btn bg-mist p-3 text-sm">
-          <p className="text-[12px] font-semibold uppercase tracking-wide text-pewter">What students see</p>
-          <p className="mt-1 font-semibold">
-            <RichText text={text} />
-          </p>
-          <ul className="mt-1 text-graphite">
-            {options.filter((o) => o.trim()).map((o, i) => (
-              <li key={i}>
-                {String.fromCharCode(65 + i)}. <RichText text={o} />
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
       {formError && <p className="mt-2 text-sm font-semibold text-brand-red" role="alert">{formError}</p>}
       <div className="mt-3 flex gap-3">
         <button
@@ -997,7 +956,7 @@ function QuestionEditor({
             ) : (
               <li key={q.id || qi} className="rounded-btn bg-mist p-4">
                 <div className="flex items-start justify-between gap-3">
-                  <p className="text-sm font-semibold">
+                  <p className="whitespace-pre-line text-sm font-semibold">
                     <span className="mr-2 text-pewter">{qi + 1}.</span>
                     <RichText text={q.text} />
                   </p>
@@ -1105,7 +1064,7 @@ function PasteQuestions({
   onSave: (questions: Exam["questions"]) => Promise<boolean>;
 }) {
   const [text, setText] = useState("");
-  const box = useRef<HTMLTextAreaElement>(null);
+  const box = useRef<RichFieldControls | null>(null);
   const parsed = useMemo(() => parseQuestions(text), [text]);
   // Pasted questions go after the ones already there, so number them on from those.
   const numberOf = (q: { number: number }) => exam.questions.length + q.number;
@@ -1129,23 +1088,17 @@ function PasteQuestions({
     <div className="mt-3 rounded-btn border border-dashed border-pewter/50 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="font-display text-sm font-bold tracking-tight">Paste questions</p>
-        <FormatButtons field={() => (box.current ? { el: box.current, set: setText } : null)} />
+        <QuestionToolbar field={() => box.current} />
       </div>
       <p className="mt-1 text-[13px] text-pewter">
         Paste from Word or type them in. End every question with an <strong>Answer:</strong> line; numbering and blank
         lines are optional. An <strong>Explanation:</strong> line is allowed and is never shown to students. Bold,
-        underlined and italic words from Word are kept: in this box they show as &lt;b&gt;, &lt;u&gt; and &lt;i&gt;,
-        and the preview below shows them as students will see them.
+        underline, italic, superscript (x²) and subscript (H₂O) pasted from Word are kept, and show here as students
+        will see them. Use the buttons above to add them, or Symbols for √, π, → and more.
       </p>
-      <textarea
-        ref={box}
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onPaste={(e) => pasteFormatted(e, setText)}
-        placeholder={PASTE_EXAMPLE}
-        rows={10}
-        className="mt-3 w-full rounded-btn border border-smoke px-3 py-2.5 font-mono text-[13px] outline-none focus:border-brand-navy"
-      />
+      <div className="mt-3">
+        <RichField controlsRef={box} value={text} onChange={setText} label="Questions to add" placeholder={PASTE_EXAMPLE} multiline minHeight="16rem" />
+      </div>
 
       {parsed.length > 0 && (
         <>

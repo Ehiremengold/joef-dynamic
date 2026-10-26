@@ -373,7 +373,8 @@ export default function TestRunner({
             id="question-title"
             ref={headingRef}
             tabIndex={-1}
-            className="mt-2 text-lg font-semibold leading-snug outline-none"
+            // A question typed over several lines keeps its line breaks.
+            className="mt-2 whitespace-pre-line text-lg font-semibold leading-snug outline-none"
           >
             <span className="sr-only">Question {current + 1} of {count}. </span>
             <RichText text={q.text} />
@@ -425,7 +426,8 @@ export default function TestRunner({
             {last ? (
               <p className="text-right text-[13px] text-graphite">
                 That&rsquo;s the last question. Check the numbers below, then press Submit test.
-              </p>            ) : (
+              </p>
+            ) : (
               <button
                 type="button"
                 onClick={() => goTo(current + 1)}
