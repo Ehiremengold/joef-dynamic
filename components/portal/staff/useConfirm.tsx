@@ -59,15 +59,17 @@ function ConfirmDialog({
   onClose: (answer: false | { reason: string }) => void;
 }) {
   const confirmRef = useRef<HTMLButtonElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
   const reasonRef = useRef<HTMLTextAreaElement>(null);
   const blocked = Boolean(options.reason) && reason.trim().length === 0;
 
   useEffect(() => {
-    (options.reason ? reasonRef.current : confirmRef.current)?.focus();
+    // Something that can't be undone (a deleted score) starts on Cancel, so a stray Enter keeps it.
+    (options.reason ? reasonRef.current : options.danger ? cancelRef.current : confirmRef.current)?.focus();
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose(false);
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [options.reason, onClose]);
+  }, [options.reason, options.danger, onClose]);
 
   return (
     <div
@@ -93,6 +95,7 @@ function ConfirmDialog({
         )}
         <div className="mt-5 flex justify-end gap-3">
           <button
+            ref={cancelRef}
             type="button"
             onClick={() => onClose(false)}
             className="cursor-pointer rounded-btn px-4 py-2 text-sm font-semibold text-graphite hover:text-ink"
