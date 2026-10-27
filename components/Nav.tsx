@@ -33,10 +33,13 @@ export default function Nav({ wide = false }: { wide?: boolean }) {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
     const onResize = () => wideEnough.matches && close();
     document.addEventListener("keydown", onKey);
-    wideEnough.addEventListener("change", onResize);
+    // Safari before 14 only has the older addListener on a media query.
+    if (wideEnough.addEventListener) wideEnough.addEventListener("change", onResize);
+    else wideEnough.addListener(onResize);
     return () => {
       document.removeEventListener("keydown", onKey);
-      wideEnough.removeEventListener("change", onResize);
+      if (wideEnough.removeEventListener) wideEnough.removeEventListener("change", onResize);
+      else wideEnough.removeListener(onResize);
     };
   }, [open]);
 

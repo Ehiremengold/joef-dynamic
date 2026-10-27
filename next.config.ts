@@ -8,6 +8,11 @@ const nextConfig: NextConfig = {
   // instead, where its own relative paths resolve correctly. bcrypt is a
   // native addon (a .node binary): it must be loaded from node_modules too.
   serverExternalPackages: ["pdfkit", "bcrypt"],
+  // TanStack Query ships modern syntax (private #fields, ??=) that iPhones
+  // before iOS 14.5 can't read: the page fails to load at all. Next only
+  // rewrites our own code for older browsers by default, so have it rewrite
+  // these packages too.
+  transpilePackages: ["@tanstack/query-core", "@tanstack/react-query"],
 };
 
 export default nextConfig;
