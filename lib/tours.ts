@@ -275,7 +275,7 @@ function examsTour(role: StaffRole): TourStep[] {
     {
       target: "exams-list",
       title: "All exams",
-      text: "The exams that match your search and filters, newest first, 20 a page. The badge shows the class (or Entrance), with the number of questions and the time allowed.",
+      text: "The exams that match your search and filters, newest first, 20 a page. The badge shows the class (or Entrance), with the number of questions and the time allowed. The icons on each card open its Questions, Date & time, Sittings and How students did, and Send it to Term scores: point at one to see its name.",
     },
     {
       target: "exam-open",
@@ -305,7 +305,7 @@ function examsTour(role: StaffRole): TourStep[] {
     {
       target: "exam-results",
       title: "How students did",
-      text: "The class's results for this test: the average, highest and lowest score, each question with how many got it right and the wrong answer most chose, and every student's score, plus the switch that lets students see their answers. Open it and press “How this works” there for each part.",
+      text: "The class's results for this test: the average, highest and lowest score and every student's score, plus the switch that lets students see their answers. Open it and press “How this works” there for each part.",
     },
     {
       target: "exam-send",
@@ -800,11 +800,6 @@ export const EXAM_RESULTS_TOUR: TourStep[] = [
     target: "exam-score-summary",
     title: "The class at a glance",
     text: "How many sat the test, and the average, highest and lowest score as a percentage.",
-  },
-  {
-    target: "exam-question-stats",
-    title: "Question by question",
-    text: "How many got each question right, with the wrong answer most chose and how many left it blank. A low figure (in red) points to a topic the class found hard.",
   },
   {
     target: "exam-student-results",

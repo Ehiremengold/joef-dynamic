@@ -6,14 +6,10 @@ import { percent } from "@/lib/results";
 import { EXAM_RESULTS_TOUR } from "@/lib/tours";
 import type { Exam, ExamAnalysis } from "@/lib/types";
 import GuideTour from "@/components/portal/GuideTour";
-import RichText from "@/components/portal/RichText";
 import AnswerReviewDialog from "./AnswerReviewDialog";
 
-const letter = (i: number) => String.fromCharCode(65 + i);
-
 /**
- * How the class did on an exam: the spread of scores, each question with how
- * many got it right and the wrong answer most chose, and every student's
+ * How the class did on an exam: the spread of scores, and every student's
  * result with their answers. Also where the teacher lets students see their
  * own answers, once everyone has sat it.
  */
@@ -41,7 +37,6 @@ export default function ExamResults({
   useEffect(() => {
     if (reviewChoice !== null && exam.reviewOpen === reviewChoice) setReviewChoice(null);
   }, [exam.reviewOpen, reviewChoice]);
-  const counted = a ? a.sat - a.notCounted : 0;
 
   async function setReview(on: boolean) {
     setReviewChoice(on);
@@ -102,53 +97,6 @@ export default function ExamResults({
               </div>
             ))}
           </dl>
-
-          <h4 className="mt-6 font-display text-sm font-bold tracking-tight">Question by question</h4>
-          {a.notCounted > 0 && (
-            <p className="mt-1 text-[13px] text-pewter">
-              {a.notCounted} result{a.notCounted === 1 ? " was" : "s were"} taken before the questions were last edited, so{" "}
-              {a.notCounted === 1 ? "it isn't" : "they aren't"} counted here.
-            </p>
-          )}
-          {a.olderCounted > 0 && (
-            <p className="mt-1 text-[13px] text-pewter">
-              {a.olderCounted} result{a.olderCounted === 1 ? " is" : "s are"} from before answers were kept with each test, so{" "}
-              {a.olderCounted === 1 ? "it is" : "they are"} counted against the questions as they are now. If a question was edited
-              after {a.olderCounted === 1 ? "it was" : "they were"} taken, its figures may mix answers to both versions.
-            </p>
-          )}
-          {counted === 0 ? (
-            <p className="mt-2 text-sm text-graphite">No results match the questions as they are now, so there is nothing to count yet.</p>
-          ) : (
-            <ol data-tour="exam-question-stats" className="mt-2 space-y-2">
-              {a.questions.map((s, i) => {
-                const right = s.chose[s.correctIndex] ?? 0;
-                const wrong = s.chose.map((n, oi) => ({ n, oi })).filter(({ oi }) => oi !== s.correctIndex).sort((x, y) => y.n - x.n)[0];
-                const share = percent(right, counted);
-                return (
-                  <li key={i} className="rounded-btn border border-smoke p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <p className="min-w-0 text-sm">
-                        <span className="mr-1.5 font-semibold text-pewter">{i + 1}.</span>
-                        <RichText text={s.text} />
-                      </p>
-                      <p className={`shrink-0 font-display font-bold tabular-nums ${share >= 70 ? "text-brand-green" : share < 40 ? "text-brand-red" : "text-ink"}`}>
-                        {share}%
-                      </p>
-                    </div>
-                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-mist" aria-hidden="true">
-                      <div className="h-full rounded-full bg-brand-green" style={{ width: `${share}%` }} />
-                    </div>
-                    <p className="mt-1.5 text-[12px] text-graphite">
-                      {right} of {counted} right (answer {letter(s.correctIndex)})
-                      {wrong && wrong.n > 0 ? ` · most chosen wrong answer: ${letter(wrong.oi)} (${wrong.n})` : ""}
-                      {s.unanswered ? ` · ${s.unanswered} left it blank` : ""}
-                    </p>
-                  </li>
-                );
-              })}
-            </ol>
-          )}
 
           <h4 className="mt-6 font-display text-sm font-bold tracking-tight">Each student</h4>
           <ul data-tour="exam-student-results" className="mt-2 divide-y divide-smoke rounded-btn border border-smoke">

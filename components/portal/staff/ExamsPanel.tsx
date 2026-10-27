@@ -12,6 +12,7 @@ import { useConfirm } from "./useConfirm";
 import EntranceAccess from "./EntranceAccess";
 import SendToScoresDialog from "./SendToScoresDialog";
 import ExamResults from "./ExamResults";
+import IconButton from "./IconButton";
 import Pagination from "./Pagination";
 import FilterSelect from "./FilterSelect";
 import RichText from "@/components/portal/RichText";
@@ -406,48 +407,32 @@ function ExamCard({
           </label>
         </div>
         {/* The buttons get a row of their own, so the title keeps the card's full width. */}
-        <div className="mt-4 flex flex-wrap gap-2">
-          <button
-            type="button"
-            data-tour="exam-questions"
-            onClick={() => setPanel(open ? "none" : "questions")}
-            className="cursor-pointer rounded-btn border border-ink px-3 py-1.5 text-sm font-semibold transition-colors duration-200 hover:bg-ink hover:text-white"
-          >
-            {open ? "Close" : "Questions"}
-          </button>
-          <button
-            type="button"
-            data-tour="exam-schedule"
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          {/* Icons, with their names shown on hover or keyboard focus, keep the row short. */}
+          <IconButton icon="questions" label={open ? "Hide questions" : "Questions"} pressed={open} tour="exam-questions" onClick={() => setPanel(open ? "none" : "questions")} />
+          <IconButton
+            icon="schedule"
+            label={panel === "schedule" ? "Hide date & time" : "Date & time"}
+            pressed={panel === "schedule"}
+            tour="exam-schedule"
             onClick={() => setPanel(panel === "schedule" ? "none" : "schedule")}
-            className="cursor-pointer rounded-btn border border-ink px-3 py-1.5 text-sm font-semibold transition-colors duration-200 hover:bg-ink hover:text-white"
-          >
-            {panel === "schedule" ? "Close" : "Date & time"}
-          </button>
-          <button
-            type="button"
-            data-tour="exam-sittings"
+          />
+          <IconButton
+            icon="sittings"
+            label={panel === "sittings" ? "Hide sittings" : "Sittings"}
+            pressed={panel === "sittings"}
+            tour="exam-sittings"
             onClick={() => setPanel(panel === "sittings" ? "none" : "sittings")}
-            className="cursor-pointer rounded-btn border border-ink px-3 py-1.5 text-sm font-semibold transition-colors duration-200 hover:bg-ink hover:text-white"
-          >
-            {panel === "sittings" ? "Close" : "Sittings"}
-          </button>
-          <button
-            type="button"
-            data-tour="exam-results"
+          />
+          <IconButton
+            icon="results"
+            label={panel === "results" ? "Hide how students did" : "How students did"}
+            pressed={panel === "results"}
+            tour="exam-results"
             onClick={() => setPanel(panel === "results" ? "none" : "results")}
-            className="cursor-pointer rounded-btn border border-ink px-3 py-1.5 text-sm font-semibold transition-colors duration-200 hover:bg-ink hover:text-white"
-          >
-            {panel === "results" ? "Close" : "How students did"}
-          </button>
+          />
           {exam.type === "class" && (
-            <button
-              type="button"
-              data-tour="exam-send"
-              onClick={() => setSending(true)}
-              className="cursor-pointer rounded-btn border border-brand-navy px-3 py-1.5 text-sm font-semibold text-brand-navy transition-colors duration-200 hover:bg-brand-navy hover:text-white"
-            >
-              Send to Term scores
-            </button>
+            <IconButton icon="send" label="Send to Term scores" tone="navy" tour="exam-send" onClick={() => setSending(true)} />
           )}
           <a
             data-tour="exam-download"

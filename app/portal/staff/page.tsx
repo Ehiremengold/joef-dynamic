@@ -100,7 +100,7 @@ function useTab(): [Tab, (t: Tab) => void] {
 const ADMIN_TABS: Tab[] = ["classes", "sessions", "team", "approvals"];
 
 // Bump a tab's number when its tour changes enough that everyone should see it again.
-const TAB_TOUR_VERSION: Partial<Record<Tab, number>> = { students: 8, exams: 7, team: 4, scores: 2, results: 2 };
+const TAB_TOUR_VERSION: Partial<Record<Tab, number>> = { students: 8, exams: 8, team: 4, scores: 2, results: 2 };
 
 const TABS: [Tab, string][] = [
   ["exams", "Exams & questions"],
