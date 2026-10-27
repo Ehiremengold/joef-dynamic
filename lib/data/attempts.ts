@@ -1,7 +1,7 @@
 import "server-only";
 import { serviceClient } from "@/lib/supabase/server";
 import type { Page } from "@/lib/paging";
-import type { Attempt, ExamType, TakerType } from "@/lib/types";
+import type { Attempt, AttemptQuestion, ExamType, TakerType } from "@/lib/types";
 import { readPage } from "./paging";
 
 type Row = Record<string, unknown>;
@@ -22,8 +22,16 @@ function mapAttempt(r: Row): Attempt {
     score: r.score as number,
     total: r.total as number,
     submittedAt: r.submitted_at as string,
+    questions: (r.questions as AttemptQuestion[] | null | undefined) ?? null,
   };
 }
+
+/**
+ * The columns a list of results needs: not the question copy (questions,
+ * 0020), which carries the correct answers and is only read for a review.
+ */
+const LIST_COLUMNS =
+  "id, exam_id, exam_title, exam_type, taker_type, student_id, candidate_id, taker_name, class_name, year, answers, score, total, submitted_at";
 
 export class DuplicateAttemptError extends Error {}
 
@@ -40,10 +48,10 @@ export async function insertAttempt(input: {
   answers: (number | null)[];
   score: number;
   total: number;
+  /** The questions as they are now, kept with the result (0020). */
+  questions: AttemptQuestion[];
 }): Promise<Attempt> {
-  const { data, error } = await serviceClient()
-    .from("attempts")
-    .insert({
+  const row = {
       exam_id: input.examId,
       exam_title: input.examTitle,
       exam_type: input.examType,
@@ -56,9 +64,17 @@ export async function insertAttempt(input: {
       answers: input.answers,
       score: input.score,
       total: input.total,
-    })
-    .select("*")
-    .single();
+      questions: input.questions,
+  };
+  let { data, error } = await serviceClient().from("attempts").insert(row).select("*").single();
+  // Before migration 0020 there is nowhere to keep the questions: save the result without them
+  // rather than lose a student's test.
+  // PostgREST answers PGRST204 ("Could not find the 'questions' column"); Postgres itself 42703.
+  const code = (error as { code?: string } | null)?.code;
+  if (error && (code === "PGRST204" || code === "42703") && /questions/.test(error.message)) {
+    const { questions: _q, ...withoutQuestions } = row;
+    ({ data, error } = await serviceClient().from("attempts").insert(withoutQuestions).select("*").single());
+  }
 
   if (error) {
     // 23505 = unique_violation → the taker already sat this exam
@@ -79,9 +95,13 @@ export type AttemptFilter = {
   type?: ExamType;
 };
 
-/** The filtered, ordered attempts query; `count` adds the total a paged read needs. */
-function attemptsQuery(filter: AttemptFilter, count?: "exact") {
-  let q = serviceClient().from("attempts").select("*", { count });
+/**
+ * The filtered, ordered attempts query; `count` adds the total a paged read
+ * needs, and `withQuestions` the question copy (server-side use only).
+ */
+function attemptsQuery(filter: AttemptFilter, count?: "exact", withQuestions = false) {
+  const columns: string = withQuestions ? "*" : LIST_COLUMNS;
+  let q = serviceClient().from("attempts").select(columns, { count });
 
   if (filter.studentId) q = q.eq("student_id", filter.studentId);
   if (filter.examId) q = q.eq("exam_id", filter.examId);
@@ -111,14 +131,15 @@ export async function hasAttempt(
   return (count ?? 0) > 0;
 }
 
-export async function listAttempts(filter: AttemptFilter): Promise<Attempt[]> {
-  const { data } = await attemptsQuery(filter);
+export async function listAttempts(filter: AttemptFilter, { withQuestions = false } = {}): Promise<Attempt[]> {
+  // The column list is chosen at run time, so its row type can't be inferred.
+  const { data } = await attemptsQuery(filter, undefined, withQuestions).overrideTypes<Row[], { merge: false }>();
   return (data ?? []).map(mapAttempt);
 }
 
 /** One page of results, newest first. */
 export async function listAttemptsPage(filter: AttemptFilter, page: number): Promise<Page<Attempt>> {
-  return readPage((from, to) => attemptsQuery(filter, "exact").range(from, to), page, mapAttempt);
+  return readPage((from, to) => attemptsQuery(filter, "exact").range(from, to).overrideTypes<Row[], { merge: false }>(), page, mapAttempt);
 }
 
 /**

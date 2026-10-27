@@ -11,6 +11,7 @@ import { CLASSES, type Exam, type SignedInStaff } from "@/lib/types";
 import { useConfirm } from "./useConfirm";
 import EntranceAccess from "./EntranceAccess";
 import SendToScoresDialog from "./SendToScoresDialog";
+import ExamResults from "./ExamResults";
 import Pagination from "./Pagination";
 import FilterSelect from "./FilterSelect";
 import RichText from "@/components/portal/RichText";
@@ -101,7 +102,8 @@ export default function ExamsPanel({
 
   // An exam change can change results too (a deleted exam, a cleared score).
   const reload = useCallback(() => {
-    invalidate("/api/exams", "/api/attempts");
+    // "/api/exams/*" too: an exam's results summary (analysis) and its sittings change with it.
+    invalidate("/api/exams", "/api/exams/*", "/api/attempts");
   }, [invalidate]);
 
   return (
@@ -297,7 +299,7 @@ function ExamCard({
   onRequested: () => void;
   onUnauthorized: () => void;
 }) {
-  const [panel, setPanel] = useState<"none" | "questions" | "sittings" | "schedule">("none");
+  const [panel, setPanel] = useState<"none" | "questions" | "sittings" | "schedule" | "results">("none");
   const [sending, setSending] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -429,6 +431,14 @@ function ExamCard({
           >
             {panel === "sittings" ? "Close" : "Sittings"}
           </button>
+          <button
+            type="button"
+            data-tour="exam-results"
+            onClick={() => setPanel(panel === "results" ? "none" : "results")}
+            className="cursor-pointer rounded-btn border border-ink px-3 py-1.5 text-sm font-semibold transition-colors duration-200 hover:bg-ink hover:text-white"
+          >
+            {panel === "results" ? "Close" : "How students did"}
+          </button>
           {exam.type === "class" && (
             <button
               type="button"
@@ -474,6 +484,9 @@ function ExamCard({
         />
       )}
       {panel === "sittings" && <SittingsPanel exam={exam} authFetch={authFetch} access={access} />}
+      {panel === "results" && (
+        <ExamResults exam={exam} canEdit={access !== "view"} busy={busy} onSave={update} onUnauthorized={onUnauthorized} />
+      )}
       {sending && <SendToScoresDialog exam={exam} onClose={() => setSending(false)} onUnauthorized={onUnauthorized} />}
       {panel === "schedule" && (
         <ScheduleEditor exam={exam} busy={busy} canEdit={access !== "view"} onSave={update} />
@@ -642,7 +655,8 @@ function SittingsPanel({ exam, authFetch, access }: { exam: Exam; authFetch: Aut
   const error = actionError || sittingsQ.error?.message || "";
   const { confirm, dialog } = useConfirm();
 
-  const reload = useCallback(() => invalidate(sittingsUrl, "/api/attempts"), [invalidate, sittingsUrl]);
+  // A retake removes a result: the exam's results summary changes too.
+  const reload = useCallback(() => invalidate(sittingsUrl, `/api/exams/${exam.id}/analysis`, "/api/attempts"), [invalidate, sittingsUrl, exam.id]);
 
   async function grant(sessionId: string, extraMins: number) {
     setBusyId(sessionId);

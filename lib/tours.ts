@@ -92,7 +92,22 @@ export const STUDENT_AREA_TOUR: TourStep[] = [
   {
     target: "student-tabs",
     title: "Two things you can do",
-    text: "“Take a test” shows the tests your teachers have opened for your class. “My results” lists every test you've taken with your score.",
+    text: "“Take a test” shows the tests your teachers have opened for your class. “My results” lists every test you've taken with your score, and lets you go through a test's answers once your teacher opens them.",
+  },
+  {
+    target: "student-results",
+    title: "My results",
+    text: "Every test you've taken, with your score and the date. Under Answers it says “Not open yet” until your teacher lets the class see the answers.",
+  },
+  {
+    target: "student-see-answers",
+    title: "See answers",
+    text: "Go through this test question by question: what you chose, the correct answer, and whether you got it right, wrong or left it blank.",
+  },
+  {
+    target: "review-filter",
+    title: "Just the ones you missed",
+    text: "Show every question, or only the ones you got wrong or left blank, to see what to revise.",
   },
   {
     target: "student-test-picker",
@@ -288,6 +303,11 @@ function examsTour(role: StaffRole): TourStep[] {
       text: "Who is taking the test right now, with their time left and how many they've answered. If someone lost time to a power cut, give them +5 or +10 minutes. Below that is everyone who has finished, with their score. The exam's owner can press “Allow retake”, which deletes that score so the student can sit it again.",
     },
     {
+      target: "exam-results",
+      title: "How students did",
+      text: "The class's results for this test: the average, highest and lowest score, each question with how many got it right and the wrong answer most chose, and every student's score, plus the switch that lets students see their answers. Open it and press “How this works” there for each part.",
+    },
+    {
       target: "exam-send",
       title: "Send to Term scores",
       text: "Put this test's CBT results on the term score sheet. Choose the term, the subject, and whether it counts as CA (out of 40) or exam (out of 60): a score of 32/40 becomes CA 32 or exam 48. You see every student's mark before anything is saved. Marks already entered are kept unless you tick Replace. Class teachers send for their own class and the current term; admins for anyone.",
@@ -321,6 +341,11 @@ function resultsTour(role: StaffRole): TourStep[] {
       target: "results-table",
       title: "Every score",
       text: "Each row is one test someone sat: the test, their class, the year, the score and percentage, and when they submitted. Use the page numbers below the table to see more.",
+    },
+    {
+      target: "results-answers",
+      title: "Answers",
+      text: "This student's test question by question: what they chose, what was right, and which they got wrong or left blank.",
     },
     {
       target: "results-slip",
@@ -761,5 +786,34 @@ export const TEST_TOUR: TourStep[] = [
     target: "test-submit",
     title: "Submit test",
     text: "When you have finished, press Submit test. You'll be told if any question has no answer before it is sent.",
+  },
+];
+
+/** Inside an exam's "How students did" panel, from its "How this works" button. */
+export const EXAM_RESULTS_TOUR: TourStep[] = [
+  {
+    target: "exam-review-switch",
+    title: "Let students see their answers",
+    text: "Off at first, so students see only their score. Tick it once everyone has sat the test: each student can then look through it under My results, question by question, with the correct answers. Untick it to hide the answers again.",
+  },
+  {
+    target: "exam-score-summary",
+    title: "The class at a glance",
+    text: "How many sat the test, and the average, highest and lowest score as a percentage.",
+  },
+  {
+    target: "exam-question-stats",
+    title: "Question by question",
+    text: "How many got each question right, with the wrong answer most chose and how many left it blank. A low figure (in red) points to a topic the class found hard.",
+  },
+  {
+    target: "exam-student-results",
+    title: "Each student",
+    text: "Every student's score, best first. Press Answers to see what they chose for each question and what was right.",
+  },
+  {
+    target: "review-filter",
+    title: "Just the ones they missed",
+    text: "In a student's answers, show every question or only the ones they got wrong or left blank.",
   },
 ];

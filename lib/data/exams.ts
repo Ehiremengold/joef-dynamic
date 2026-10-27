@@ -31,6 +31,8 @@ function mapExam(r: Row, questions: Question[]): Exam {
     active: r.active as boolean,
     opensAt: (r.opens_at as string | null) ?? null,
     closesAt: (r.closes_at as string | null) ?? null,
+    // Missing until migration 0020 is run: no reviewing until then.
+    reviewOpen: (r.review_open as boolean | undefined) ?? false,
     createdBy: (r.created_by as string | null) ?? null,
     createdAt: r.created_at as string,
     questions,
@@ -55,8 +57,9 @@ export function isOpen(exam: Exam): boolean {
   return examStatus(exam) === "open";
 }
 
-const EXAM_COLUMNS =
-  "id, type, class_name, title, duration_mins, active, opens_at, closes_at, created_by, created_at";
+// Every column, so review_open (0020) comes back once it exists without
+// breaking the portal before the migration is run.
+const EXAM_COLUMNS = "*";
 const QUESTION_COLUMNS = "id, exam_id, text, options, correct_index, position";
 // Supabase returns at most 1000 rows per select; read questions a page at a time.
 const QUESTION_PAGE = 1000;
@@ -113,6 +116,14 @@ export async function getExam(id: string): Promise<Exam | null> {
   return mapExam(data, qmap.get(id) ?? []);
 }
 
+/** These exams without their questions, by id (for what a list of results needs to know about each). */
+export async function listExamsByIds(ids: string[]): Promise<Map<string, Exam>> {
+  if (ids.length === 0) return new Map();
+  const { data, error } = await serviceClient().from("exams").select(EXAM_COLUMNS).in("id", [...new Set(ids)]);
+  if (error) throw new Error(error.message);
+  return new Map((data ?? []).map((r) => [r.id as string, mapExam(r, [])]));
+}
+
 export async function createExam(input: {
   type: ExamType;
   className: string | null;
@@ -145,6 +156,7 @@ export async function updateExamMeta(
     /** ISO times; null clears that side of the schedule. */
     opensAt?: string | null;
     closesAt?: string | null;
+    reviewOpen?: boolean;
   }
 ): Promise<void> {
   const row: Row = {};
@@ -153,9 +165,15 @@ export async function updateExamMeta(
   if (patch.active !== undefined) row.active = patch.active;
   if (patch.opensAt !== undefined) row.opens_at = patch.opensAt;
   if (patch.closesAt !== undefined) row.closes_at = patch.closesAt;
+  if (patch.reviewOpen !== undefined) row.review_open = patch.reviewOpen;
   if (Object.keys(row).length === 0) return;
   const { error } = await serviceClient().from("exams").update(row).eq("id", id);
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (patch.reviewOpen !== undefined && /review_open/.test(error.message)) {
+      throw new Error("Letting students see their answers needs database update 0020. Ask the developer to run it.");
+    }
+    throw new Error(error.message);
+  }
 }
 
 /** Replace all questions for an exam in one transaction-like swap. */

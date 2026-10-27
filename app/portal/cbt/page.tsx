@@ -8,8 +8,10 @@ import { formatExamTime } from "@/lib/lagosTime";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import TestRunner, { type SubmittedResult } from "@/components/portal/TestRunner";
+import AnswerReviewLoader from "@/components/portal/AnswerReviewLoader";
 import GuideTour from "@/components/portal/GuideTour";
 import { STUDENT_AREA_TOUR, STUDENT_SIGNIN_TOUR } from "@/lib/tours";
+import { percent } from "@/lib/results";
 import type { Attempt, ClassName, PublicExam } from "@/lib/types";
 
 /** A test with a date and time that hasn't arrived yet. */
@@ -67,7 +69,7 @@ export default function CbtPage() {
                 {!loading && (
                   <div className="flex flex-wrap gap-2">
                     {me ? (
-                      <GuideTour id="student-area-v2" steps={STUDENT_AREA_TOUR} />
+                      <GuideTour id="student-area-v3" steps={STUDENT_AREA_TOUR} />
                     ) : (
                       <GuideTour id="student-signin-v1" steps={STUDENT_SIGNIN_TOUR} />
                     )}
@@ -342,9 +344,26 @@ function MyResults() {
   const attemptsQ = useApi<{ attempts: Attempt[] }>("/api/attempts");
   const attempts = attemptsQ.data?.attempts ?? [];
   const loading = attemptsQ.isPending;
+  // The result being looked through question by question, if any.
+  const [reviewingId, setReviewingId] = useState<string | null>(null);
+
+  if (reviewingId) {
+    return (
+      <div className="mx-auto max-w-[760px]">
+        <button
+          type="button"
+          onClick={() => setReviewingId(null)}
+          className="mb-4 cursor-pointer text-sm font-semibold text-brand-navy hover:underline"
+        >
+          ← Back to my results
+        </button>
+        <AnswerReviewLoader attemptId={reviewingId} answerLabel="Your answer" />
+      </div>
+    );
+  }
 
   return (
-    <div className="mx-auto max-w-[760px] overflow-x-auto rounded-card border border-smoke bg-white">
+    <div data-tour="student-results" className="mx-auto max-w-[760px] overflow-x-auto rounded-card border border-smoke bg-white">
       {loading ? (
         <p className="p-6 text-sm text-graphite">Loading your results…</p>
       ) : attempts.length === 0 ? (
@@ -358,6 +377,7 @@ function MyResults() {
               <th className="px-4 py-3 font-semibold">Test</th>
               <th className="px-4 py-3 font-semibold">Score</th>
               <th className="px-4 py-3 font-semibold">Date</th>
+              <th className="px-4 py-3 font-semibold">Answers</th>
             </tr>
           </thead>
           <tbody>
@@ -366,12 +386,24 @@ function MyResults() {
                 <td className="px-4 py-3 font-semibold">{a.examTitle}</td>
                 <td className="px-4 py-3">
                   <span className="font-display font-bold">{a.score}/{a.total}</span>{" "}
-                  <span className="text-pewter">
-                    ({a.total ? Math.round((a.score / a.total) * 100) : 0}%)
-                  </span>
+                  <span className="text-pewter">({percent(a.score, a.total)}%)</span>
                 </td>
                 <td className="px-4 py-3 text-graphite">
                   {new Date(a.submittedAt).toLocaleDateString()}
+                </td>
+                <td className="px-4 py-3">
+                  {a.reviewOpen ? (
+                    <button
+                      type="button"
+                      data-tour="student-see-answers"
+                      onClick={() => setReviewingId(a.id)}
+                      className="cursor-pointer whitespace-nowrap rounded-btn border border-brand-navy px-3 py-1.5 text-[13px] font-semibold text-brand-navy hover:bg-brand-navy hover:text-white"
+                    >
+                      See answers
+                    </button>
+                  ) : (
+                    <span className="text-[13px] text-pewter">Not open yet</span>
+                  )}
                 </td>
               </tr>
             ))}

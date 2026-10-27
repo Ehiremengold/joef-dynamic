@@ -37,6 +37,8 @@ export type Exam = {
   active: boolean;
   opensAt: string | null;
   closesAt: string | null;
+  /** Students may see their answers and the correct ones (see 0020). */
+  reviewOpen: boolean;
   createdBy: string | null;
   createdAt: string;
   questions: Question[];
@@ -63,6 +65,63 @@ export type Attempt = {
   score: number;
   total: number;
   submittedAt: string;
+  /** The questions as they were when it was submitted; null on results from before 0020. */
+  questions: AttemptQuestion[] | null;
+  /** On a student's own results: whether they may see their answers yet. */
+  reviewOpen?: boolean;
+};
+
+/** One question as a result keeps it: what was asked, the choices and the right one. */
+export type AttemptQuestion = { text: string; options: string[]; correctIndex: number };
+
+/** One student's result in an exam's list: who, and how they did. */
+export type ResultRow = Pick<Attempt, "id" | "takerName" | "className" | "score" | "total" | "submittedAt">;
+
+/** How a class answered one question of an exam. */
+export type QuestionStats = {
+  text: string;
+  options: string[];
+  correctIndex: number;
+  /** How many chose each option, in option order. */
+  chose: number[];
+  unanswered: number;
+};
+
+export type ExamAnalysis = {
+  sat: number;
+  /** Percentages of the total, rounded. */
+  average: number | null;
+  highest: number | null;
+  lowest: number | null;
+  /** Each question with how the class answered it (from the exam's questions as they are now). */
+  questions: QuestionStats[];
+  /** Results taken against an earlier version of the questions: not counted in `questions`. */
+  notCounted: number;
+  /**
+   * Results from before answers were kept with each test (0020), counted in
+   * `questions` against the questions as they are now: if a question was
+   * edited since, its figures mix answers to two versions.
+   */
+  olderCounted: number;
+  results: ResultRow[];
+};
+
+/** A result question by question: what was asked, what they chose, what was right. */
+export type AnswerReview = {
+  attemptId: string;
+  examTitle: string;
+  takerName: string;
+  className: string | null;
+  score: number;
+  total: number;
+  submittedAt: string;
+  items: (AttemptQuestion & { chosen: number | null })[];
+  /**
+   * "snapshot": the questions as they were when it was submitted. "current":
+   * an older result, compared with the exam's questions as they are now,
+   * which may have been edited since.
+   */
+  source: "snapshot" | "current";
 };
 
 /** A sitting that has been started but not yet submitted. */

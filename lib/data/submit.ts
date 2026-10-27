@@ -2,6 +2,7 @@ import "server-only";
 import type { Attempt, Exam, TakerSession } from "@/lib/types";
 import { insertAttempt } from "@/lib/data/attempts";
 import { deleteSession } from "@/lib/data/attemptSessions";
+import { toAttemptQuestion } from "@/lib/results";
 
 /** May this taker sit this exam at all? */
 export function canSit(exam: Exam, taker: TakerSession): boolean {
@@ -43,6 +44,8 @@ export async function finalizeAttempt(input: {
     answers: marked,
     score,
     total: exam.questions.length,
+    // What was asked, as it was asked: the questions may be edited later.
+    questions: exam.questions.map(toAttemptQuestion),
   });
 
   if (sessionId) await deleteSession(sessionId);

@@ -6,6 +6,7 @@ import { CLASSES, type Attempt, type SignedInStaff } from "@/lib/types";
 import Pagination from "./Pagination";
 import { usePagedList } from "./usePagedList";
 import { useConfirm } from "./useConfirm";
+import AnswerReviewDialog from "./AnswerReviewDialog";
 
 const YEARS = ["2024", "2025", "2026", "2027"];
 
@@ -21,6 +22,8 @@ export default function ResultsPanel({
   const [className, setClassName] = useState("");
   const [year, setYear] = useState("");
   const [type, setType] = useState("");
+  // The result whose answers are open, question by question.
+  const [viewing, setViewing] = useState<string | null>(null);
   const { rows: attempts, total, page, setPage, loading, reload } = usePagedList<Attempt>({
     url: "/api/attempts",
     rowsKey: "attempts",
@@ -45,6 +48,7 @@ export default function ResultsPanel({
   return (
     <div>
       {dialog}
+      {viewing && <AnswerReviewDialog attemptId={viewing} onClose={() => setViewing(null)} onUnauthorized={onUnauthorized} />}
       <div data-tour="results-filters" className="rounded-card border border-smoke bg-white p-5">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
@@ -142,6 +146,14 @@ export default function ResultsPanel({
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex gap-3 whitespace-nowrap">
+                      <button
+                        type="button"
+                        data-tour="results-answers"
+                        onClick={() => setViewing(a.id)}
+                        className="cursor-pointer text-[13px] font-semibold text-ink hover:underline"
+                      >
+                        Answers
+                      </button>
                       <a
                         data-tour="results-slip"
                         href={`/api/attempts/${a.id}/pdf`}

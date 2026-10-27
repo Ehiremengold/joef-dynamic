@@ -45,7 +45,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 }
 
 /**
- * PUT /api/exams/:id — Partial: { title?, durationMins?, active?, opensAt?, closesAt?, questions? }.
+ * PUT /api/exams/:id — Partial: { title?, durationMins?, active?, opensAt?, closesAt?, reviewOpen?, questions? }.
  * Questions are validated and replaced wholesale; existing ones are sent back
  * with their id. A teacher can only change their own exams. An admin can
  * change anyone's, except that removing questions from someone else's exam
@@ -142,6 +142,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
           ? Math.max(1, Math.min(180, Number(body.durationMins) || exam.durationMins))
           : undefined,
       active: typeof body.active === "boolean" ? body.active : activeAfterScheduleChange(exam, opensAt),
+      reviewOpen: typeof body.reviewOpen === "boolean" ? body.reviewOpen : undefined,
     });
 
     const updated = await getExam(id);

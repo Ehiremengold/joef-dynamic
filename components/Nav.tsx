@@ -47,7 +47,7 @@ export default function Nav({ wide = false }: { wide?: boolean }) {
     <header className="sticky top-0 z-40 border-b border-hairline bg-white/90 backdrop-blur-xl">
       <ScrollProgress />
       <div className={`mx-auto flex h-14 items-center justify-between gap-4 px-4 sm:px-6 ${wide ? PAGE_WIDTH.wide : PAGE_WIDTH.standard}`}>
-        <Link href="/" className="flex min-w-0 shrink-0 items-center gap-2.5">
+        <Link href="/" className="flex min-w-0 items-center gap-2.5">
           <Image
             src="/images/logo.png"
             alt="Joef Dynamic College crest"
@@ -55,12 +55,13 @@ export default function Nav({ wide = false }: { wide?: boolean }) {
             height={34}
             className="h-[34px] w-[34px] shrink-0 object-contain"
           />
-          <span className="whitespace-nowrap font-display text-[17px] font-semibold tracking-tight text-brand-navy">
+          {/* On the narrowest phones the name ends in "…" rather than pushing the page sideways. */}
+          <span className="truncate font-display text-[17px] font-semibold tracking-tight text-brand-navy">
             Joef Dynamic College
           </span>
         </Link>
 
-        <nav className="hidden items-center gap-6 lg:flex xl:gap-7" aria-label="Primary">
+        <nav className="hidden shrink-0 items-center gap-6 lg:flex xl:gap-7" aria-label="Primary">
           {links.map((l) => (
             <Link
               key={l.href}

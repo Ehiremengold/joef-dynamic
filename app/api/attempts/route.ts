@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { errorResponse, pageParam } from "@/lib/api";
 import { currentStaff } from "@/lib/auth/staff";
 import { getTakerSession } from "@/lib/auth/session";
-import { getExam, isOpen } from "@/lib/data/exams";
+import { getExam, isOpen, listExamsByIds } from "@/lib/data/exams";
+import { studentMayReview } from "@/lib/data/review";
 import { DuplicateAttemptError, listAttempts, listAttemptsPage } from "@/lib/data/attempts";
 import { getSession, isExpired } from "@/lib/data/attemptSessions";
 import { canSit, finalizeAttempt, submittedResult } from "@/lib/data/submit";
@@ -11,7 +12,8 @@ import type { ExamType } from "@/lib/types";
 /**
  * GET /api/attempts
  * - Staff: all attempts, a page at a time; filter by ?name=&className=&year=&type=&page=
- * - Student session: only their OWN attempts (privacy).
+ * - Student session: only their OWN attempts (privacy), each saying whether
+ *   its answers may be looked through yet (reviewOpen).
  * - Otherwise: 401.
  */
 export async function GET(req: NextRequest) {
@@ -33,8 +35,16 @@ export async function GET(req: NextRequest) {
 
     const taker = await getTakerSession();
     if (taker?.kind === "student") {
-      const attempts = await listAttempts({ studentId: taker.id });
-      return NextResponse.json({ attempts });
+      // With the question copies, only to tell which they may look through yet: never sent.
+      const attempts = await listAttempts({ studentId: taker.id }, { withQuestions: true });
+      const exams = await listExamsByIds(attempts.map((a) => a.examId).filter((x): x is string => !!x));
+      return NextResponse.json({
+        attempts: attempts.map(({ questions, ...a }) => ({
+          ...a,
+          questions: null,
+          reviewOpen: studentMayReview({ questions, examId: a.examId }, a.examId ? exams.get(a.examId) ?? null : null),
+        })),
+      });
     }
 
     return NextResponse.json(

@@ -2,7 +2,9 @@
 
 import { useEffect } from "react";
 
-const RELOADED = "jdc-reloaded-after-update";
+const RELOADED_AT = "jdc-reloaded-after-update";
+// Long enough that a page which still fails after reloading shows this screen instead of reloading again.
+const RELOAD_GAP_MS = 60_000;
 
 /**
  * A chunk the page asked for is gone: the site was updated while this tab
@@ -14,16 +16,17 @@ const isStaleCode = (error: Error) => /ChunkLoadError|Loading chunk|Loading CSS 
  * What a visitor sees when the page itself fails, instead of Next's bare
  * "Application error". It says what to do, offers Reload, and shows the
  * error underneath so a screenshot of it tells us what went wrong. A page
- * left open across an update reloads itself once, which fixes that case.
+ * left open across an update reloads itself (at most once a minute), which
+ * fixes that case.
  */
 export default function ErrorScreen({ error }: { error: Error & { digest?: string } }) {
   useEffect(() => {
     console.error(error);
     if (!isStaleCode(error)) return;
     try {
-      // Once only: if the reload doesn't help, show this screen rather than reloading forever.
-      if (sessionStorage.getItem(RELOADED)) return;
-      sessionStorage.setItem(RELOADED, "1");
+      // Once a minute at most: if the reload doesn't help, show this screen rather than reloading forever.
+      if (Date.now() - Number(sessionStorage.getItem(RELOADED_AT) ?? 0) < RELOAD_GAP_MS) return;
+      sessionStorage.setItem(RELOADED_AT, String(Date.now()));
     } catch {
       return;
     }
