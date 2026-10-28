@@ -2,6 +2,8 @@
 
 /** The icons the exam cards use, drawn like the rest of the portal's (24px, 1.8 stroke). */
 const PATHS = {
+  // A pencil: edit the title, class and duration.
+  details: "M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z",
   // A list with ticks: the questions.
   questions: "M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2",
   // A calendar with a clock: date and time.

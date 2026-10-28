@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { apiKey, SIGNED_IN, useApi, useInvalidate } from "@/lib/client/api";
+import { forgetSignedIn, SIGNED_IN, useApi, useInvalidate } from "@/lib/client/api";
 import { formatExamTime } from "@/lib/lagosTime";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
@@ -41,8 +41,7 @@ export default function CbtPage() {
 
   async function signOut() {
     await fetch("/api/auth/logout", { method: "POST" });
-    client.clear();
-    client.setQueryData(apiKey("/api/me"), { kind: null });
+    forgetSignedIn(client);
   }
 
   return (

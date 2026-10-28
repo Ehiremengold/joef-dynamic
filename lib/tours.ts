@@ -275,12 +275,17 @@ function examsTour(role: StaffRole): TourStep[] {
     {
       target: "exams-list",
       title: "All exams",
-      text: "The exams that match your search and filters, newest first, 20 a page. The badge shows the class (or Entrance), with the number of questions and the time allowed. The icons on each card open its Questions, Date & time, Sittings and How students did, and Send it to Term scores: point at one to see its name.",
+      text: "The exams that match your search and filters, newest first, 20 a page. The badge shows the class (or Entrance), with the number of questions and the time allowed. The icons on each card edit its title, class and duration, and open its Questions, Date & time, Sittings and How students did, or Send it to Term scores: point at one to see its name.",
     },
     {
       target: "exam-open",
       title: "Open, scheduled or hidden",
       text: "Ticked means students can see the test: Open if they can start it now, Scheduled if it has a date and time still to come, Closed once its closing time has passed. A test with no questions stays out of students' sight even when ticked. Saving a date and time ticks it for you. Untick it to hide a test or call it off. Only switch a test on once its questions are ready.",
+    },
+    {
+      target: "exam-details",
+      title: "Edit title, class & duration",
+      text: "The pencil changes the test's name, which class sits it, and how many minutes they get, without deleting it and typing the questions in again. Results already sat stay as they are.",
     },
     {
       target: "exam-questions",

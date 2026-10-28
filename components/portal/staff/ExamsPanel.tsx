@@ -300,7 +300,7 @@ function ExamCard({
   onRequested: () => void;
   onUnauthorized: () => void;
 }) {
-  const [panel, setPanel] = useState<"none" | "questions" | "sittings" | "schedule" | "results">("none");
+  const [panel, setPanel] = useState<"none" | "details" | "questions" | "sittings" | "schedule" | "results">("none");
   const [sending, setSending] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -409,6 +409,15 @@ function ExamCard({
         {/* The buttons get a row of their own, so the title keeps the card's full width. */}
         <div className="mt-4 flex flex-wrap items-center gap-2">
           {/* Icons, with their names shown on hover or keyboard focus, keep the row short. */}
+          {access !== "view" && (
+            <IconButton
+              icon="details"
+              label={panel === "details" ? "Hide title, class & duration" : "Edit title, class & duration"}
+              pressed={panel === "details"}
+              tour="exam-details"
+              onClick={() => setPanel(panel === "details" ? "none" : "details")}
+            />
+          )}
           <IconButton icon="questions" label={open ? "Hide questions" : "Questions"} pressed={open} tour="exam-questions" onClick={() => setPanel(open ? "none" : "questions")} />
           <IconButton
             icon="schedule"
@@ -476,6 +485,9 @@ function ExamCard({
       {panel === "schedule" && (
         <ScheduleEditor exam={exam} busy={busy} canEdit={access !== "view"} onSave={update} />
       )}
+      {panel === "details" && (
+        <DetailsEditor exam={exam} busy={busy} onSave={update} onDone={() => setPanel("none")} />
+      )}
     </div>
   );
 }
@@ -528,6 +540,90 @@ function ScheduleStatus({ exam, now }: { exam: Exam; now: number }) {
  * PUT route): students see it under "Coming up" and can start it from that
  * moment. With no date and time, the Open switch alone decides.
  */
+/**
+ * Change a test's title, class and time allowed after it was created,
+ * instead of deleting it and typing the questions in again. Results already
+ * sat stay as they are.
+ */
+function DetailsEditor({
+  exam,
+  busy,
+  onSave,
+  onDone,
+}: {
+  exam: Exam;
+  busy: boolean;
+  onSave: (patch: Record<string, unknown>) => Promise<Exam | null>;
+  onDone: () => void;
+}) {
+  const [title, setTitle] = useState(exam.title);
+  const [className, setClassName] = useState(exam.className ?? "JS1");
+  const [durationMins, setDurationMins] = useState(exam.durationMins);
+  const changed =
+    title.trim() !== exam.title || durationMins !== exam.durationMins || (exam.type === "class" && className !== exam.className);
+  const valid = title.trim() !== "" && Number.isInteger(durationMins) && durationMins >= 1 && durationMins <= 180;
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    const saved = await onSave({
+      title: title.trim(),
+      durationMins,
+      ...(exam.type === "class" ? { className } : {}),
+    });
+    // Closing shows the card with its new title and class.
+    if (saved) onDone();
+  }
+
+  const FIELD = "mt-1 w-full rounded-btn border border-smoke bg-white px-3 py-2 text-sm outline-none focus:border-brand-navy";
+  return (
+    <form onSubmit={save} className="border-t border-smoke p-5">
+      <p className="font-display text-sm font-bold tracking-tight">Title, class &amp; duration</p>
+      <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto_auto]">
+        <label className="text-[13px] font-semibold">
+          Title
+          <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} className={FIELD} />
+        </label>
+        {exam.type === "class" && (
+          <label className="text-[13px] font-semibold">
+            Class
+            <select value={className} onChange={(e) => setClassName(e.target.value as typeof className)} className={`${FIELD} cursor-pointer`}>
+              {CLASSES.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          </label>
+        )}
+        <label className="text-[13px] font-semibold">
+          Minutes
+          <input
+            type="number"
+            min={1}
+            max={180}
+            value={durationMins}
+            onChange={(e) => setDurationMins(Number(e.target.value))}
+            className={`${FIELD} sm:w-24`}
+          />
+        </label>
+      </div>
+      {exam.type === "class" && className !== exam.className && (
+        <p className="mt-2 text-[13px] text-ink">
+          Students in {className} will see this test instead of {exam.className}. Results already sat in {exam.className} stay as they are.
+        </p>
+      )}
+      <div className="mt-3 flex items-center gap-3">
+        <button
+          type="submit"
+          disabled={busy || !changed || !valid}
+          className="cursor-pointer rounded-btn bg-brand-navy px-4 py-2 text-sm font-semibold text-white hover:bg-ink disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {busy ? "Saving…" : "Save changes"}
+        </button>
+        {!valid && <span className="text-[13px] text-brand-red">Give it a title and 1 to 180 minutes.</span>}
+      </div>
+    </form>
+  );
+}
+
 function ScheduleEditor({
   exam,
   busy,

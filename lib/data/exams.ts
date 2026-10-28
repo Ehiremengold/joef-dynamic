@@ -151,6 +151,8 @@ export async function updateExamMeta(
   id: string,
   patch: {
     title?: string;
+    /** A class test's class (JS1…SS3). */
+    className?: ClassName;
     durationMins?: number;
     active?: boolean;
     /** ISO times; null clears that side of the schedule. */
@@ -161,6 +163,7 @@ export async function updateExamMeta(
 ): Promise<void> {
   const row: Row = {};
   if (patch.title !== undefined) row.title = patch.title;
+  if (patch.className !== undefined) row.class_name = patch.className;
   if (patch.durationMins !== undefined) row.duration_mins = patch.durationMins;
   if (patch.active !== undefined) row.active = patch.active;
   if (patch.opensAt !== undefined) row.opens_at = patch.opensAt;

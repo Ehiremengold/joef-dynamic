@@ -112,6 +112,18 @@ export function useApi<T>(
  */
 export const SIGNED_IN = { staleTime: 10 * 60_000, refetchOnWindowFocus: false };
 
+/**
+ * After signing out: the page shows nobody signed in, and nothing the last
+ * person loaded is kept for the next one at this computer. "Nobody" is
+ * written first and the rest removed after: wiping the whole cache first
+ * (client.clear()) leaves the page still watching the old "who is signed
+ * in", so it keeps showing them until a reload.
+ */
+export function forgetSignedIn(client: QueryClient) {
+  client.setQueryData(apiKey("/api/me"), { kind: null });
+  client.removeQueries({ predicate: (q) => q.queryKey[0] !== "/api/me" });
+}
+
 export const EDITABLE = {
   staleTime: 0,
   refetchOnWindowFocus: false,

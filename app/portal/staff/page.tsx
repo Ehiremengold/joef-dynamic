@@ -22,7 +22,7 @@ import ChangePasswordDialog from "@/components/portal/staff/ChangePasswordDialog
 import GuideTour from "@/components/portal/GuideTour";
 import { STAFF_SIGNIN_TOUR, staffDashboardTour, staffTabTour, type StaffTab } from "@/lib/tours";
 import { isAdmin, isSuperAdmin, ROLE_LABELS } from "@/lib/roles";
-import { apiKey, SIGNED_IN, useApi } from "@/lib/client/api";
+import { forgetSignedIn, SIGNED_IN, useApi } from "@/lib/client/api";
 import type { SignedInStaff, Term } from "@/lib/types";
 
 type Me = SignedInStaff | null;
@@ -54,11 +54,10 @@ function useStaff() {
       // Drop the browser client's copy too, without waiting on its lock.
       void browserClient().auth.signOut({ scope: "local" }).catch(() => undefined);
     } finally {
-      forgetEverything();
-      client.setQueryData(apiKey("/api/me"), { kind: null });
+      forgetSignedIn(client);
       setSigningOut(false);
     }
-  }, [client, forgetEverything]);
+  }, [client]);
 
   return { me, loading: isPending, refresh, signedIn, signOut, signingOut };
 }
@@ -100,7 +99,7 @@ function useTab(): [Tab, (t: Tab) => void] {
 const ADMIN_TABS: Tab[] = ["classes", "sessions", "team", "approvals"];
 
 // Bump a tab's number when its tour changes enough that everyone should see it again.
-const TAB_TOUR_VERSION: Partial<Record<Tab, number>> = { students: 8, exams: 8, team: 4, scores: 2, results: 2 };
+const TAB_TOUR_VERSION: Partial<Record<Tab, number>> = { students: 8, exams: 9, team: 4, scores: 2, results: 2 };
 
 const TABS: [Tab, string][] = [
   ["exams", "Exams & questions"],

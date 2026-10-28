@@ -5,6 +5,7 @@ import { examAccess } from "@/lib/roles";
 import { getTakerSession } from "@/lib/auth/session";
 import { activeAfterScheduleChange } from "@/lib/examSchedule";
 import { plainText } from "@/lib/richText";
+import { CLASSES, type ClassName } from "@/lib/types";
 import {
   deleteExam,
   getExam,
@@ -45,7 +46,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 }
 
 /**
- * PUT /api/exams/:id — Partial: { title?, durationMins?, active?, opensAt?, closesAt?, reviewOpen?, questions? }.
+ * PUT /api/exams/:id — Partial: { title?, className?, durationMins?, active?, opensAt?, closesAt?, reviewOpen?, questions? }.
  * Questions are validated and replaced wholesale; existing ones are sent back
  * with their id. A teacher can only change their own exams. An admin can
  * change anyone's, except that removing questions from someone else's exam
@@ -106,6 +107,15 @@ export async function PUT(req: NextRequest, { params }: Params) {
       await replaceQuestions(id, cleaned);
     }
 
+    // A class test can move to another class; an entrance test has none.
+    let className: ClassName | undefined;
+    if (body.className !== undefined) {
+      if (exam.type !== "class" || !CLASSES.includes(body.className)) {
+        return NextResponse.json({ error: "Choose a valid class" }, { status: 400 });
+      }
+      className = body.className;
+    }
+
     // The schedule: both times are optional; null clears one.
     const time = (v: unknown): string | null | undefined | false => {
       if (v === undefined) return undefined;
@@ -137,6 +147,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
       opensAt,
       closesAt,
       title: typeof body.title === "string" && body.title.trim() ? body.title.trim() : undefined,
+      className,
       durationMins:
         body.durationMins !== undefined
           ? Math.max(1, Math.min(180, Number(body.durationMins) || exam.durationMins))
