@@ -47,6 +47,10 @@ export default function EditRecordDialog({
 
   const changed = fields.filter((f) => (values[f] ?? "").trim() !== (initial[f] ?? ""));
   const needsReason = !superAdmin;
+  const reasonMissing = needsReason && reason.trim().length < 3;
+  const status = !changed.length
+    ? "Nothing changed yet. Edit a field above to continue."
+    : `${changed.length} field${changed.length === 1 ? "" : "s"} changed${reasonMissing ? ". Say why it's needed to send it." : ""}`;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -110,28 +114,31 @@ export default function EditRecordDialog({
         )}
         {needsReason && (
           <>
-            <label className="mt-4 block text-[13px] font-semibold" htmlFor="edit-reason">Why is this change needed?</label>
+            <label className="mt-4 block text-[13px] font-semibold" htmlFor="edit-reason">
+              Why is this change needed? <span className="font-normal text-pewter">(required)</span>
+            </label>
             <textarea
               id="edit-reason"
               rows={2}
+              required
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               placeholder="e.g. Name misspelt on admission; parent sent the birth certificate"
-              className={INPUT}
+              className={`${INPUT} ${changed.length && reasonMissing ? "border-brand-navy bg-brand-gold/10" : ""}`}
             />
           </>
         )}
         {error && <p className="mt-3 text-sm font-semibold text-brand-red" role="alert">{error}</p>}
         <div className="mt-5 flex flex-wrap items-center justify-end gap-3">
-          <span className="mr-auto text-[12px] text-pewter">
-            {changed.length ? `${changed.length} field${changed.length === 1 ? "" : "s"} changed` : "Nothing changed yet"}
+          <span className="mr-auto text-[12px] text-pewter" aria-live="polite">
+            {status}
           </span>
           <button type="button" onClick={onClose} className="cursor-pointer rounded-btn px-4 py-2 text-sm font-semibold text-graphite hover:text-ink">
             Cancel
           </button>
           <button
             type="submit"
-            disabled={busy || changed.length === 0 || (needsReason && reason.trim().length < 3)}
+            disabled={busy || changed.length === 0 || reasonMissing}
             className="cursor-pointer rounded-btn bg-brand-navy px-4 py-2 text-sm font-semibold text-white hover:bg-ink disabled:cursor-not-allowed disabled:opacity-50"
           >
             {busy ? "Saving…" : superAdmin ? "Save changes" : "Send for approval"}
