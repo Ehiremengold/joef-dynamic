@@ -87,16 +87,25 @@ export function useApi<T>(
     ...options,
   });
 
+  useOn401([query.error], onUnauthorized, query.errorUpdatedAt);
+
+  return query;
+}
+
+/**
+ * Call onUnauthorized when any of these query errors is a 401, so the page
+ * re-checks who is signed in. useApi does this for one query; a list of
+ * queries (useQueries) passes all its errors.
+ */
+export function useOn401(errors: unknown[], onUnauthorized?: () => void, errorUpdatedAt = 0) {
   const unauthorized = useRef(onUnauthorized);
   useEffect(() => {
     unauthorized.current = onUnauthorized;
   });
-  const status = query.error instanceof ApiError ? query.error.status : 0;
+  const signedOut = errors.some((e) => e instanceof ApiError && e.status === 401);
   useEffect(() => {
-    if (status === 401) unauthorized.current?.();
-  }, [status, query.errorUpdatedAt]);
-
-  return query;
+    if (signedOut) unauthorized.current?.();
+  }, [signedOut, errorUpdatedAt]);
 }
 
 /**

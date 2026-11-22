@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { errorResponse } from "@/lib/api";
+import { ConflictError, errorResponse } from "@/lib/api";
 import { AuthError, requireStaff } from "@/lib/auth/staff";
 import { applyCbtTransfer, planCbtTransfer, type ScorePart } from "@/lib/data/cbtTransfer";
 import { listClasses } from "@/lib/data/classes";
@@ -14,8 +14,8 @@ type Options = { termId: string; subjectId: string; part: ScorePart; overwrite: 
 /**
  * Who may put this exam's results on the term sheet, and what it would do.
  * The same rules as entering term scores: a class teacher, for students in
- * their own classes (the class they sat in that term) and the current term
- * only; an admin, for anyone and any term.
+ * their own classes (the class they sat in that term); an admin, for anyone.
+ * Either, for any term.
  */
 async function prepare(examId: string, o: Options) {
   const staff = await requireStaff();
@@ -47,7 +47,7 @@ async function prepare(examId: string, o: Options) {
       : null;
 
   const rows = await planCbtTransfer({ examId, ...o, allowedClassIds: admin ? null : mine });
-  return { rows, canSave: admin || term.isCurrent, subjectWarning };
+  return { rows, subjectWarning };
 }
 
 const options = (get: (k: string) => unknown): Options => ({
@@ -82,8 +82,15 @@ export async function POST(req: NextRequest, { params }: Params) {
     const body = (await req.json().catch(() => null)) ?? {};
     const o = options((k) => body[k]);
     const plan = await prepare(id, o);
-    if (!plan.canSave) throw new AuthError("Only an admin can change a past term's scores.", 403);
-    const saved = await applyCbtTransfer({ termId: o.termId, subjectId: o.subjectId, part: o.part, rows: plan.rows });
+    let saved: number;
+    try {
+      saved = await applyCbtTransfer({ termId: o.termId, subjectId: o.subjectId, part: o.part, rows: plan.rows });
+    } catch (e) {
+      if (e instanceof ConflictError) {
+        throw new ConflictError("Someone saved some of these marks while you were sending. Nothing was saved: check the marks and send again.");
+      }
+      throw e;
+    }
     return NextResponse.json({ ...plan, saved });
   } catch (e) {
     return errorResponse(e);

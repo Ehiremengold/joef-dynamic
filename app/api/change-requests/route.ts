@@ -26,7 +26,8 @@ export async function GET(req: NextRequest) {
 
 /**
  * POST /api/change-requests — an admin edits a record:
- * { recordType: "student" | "staff", recordId, changes: { field: value }, reason }
+ * { recordType: "student" | "staff", recordId, changes: { field: value }, expected?: { field: value }, reason }
+ * (expected: the changed fields as the person saw them; 409 if any has changed since)
  * or deletes a student: { action: "delete", recordType: "student", recordId, reason }.
  * A super admin's edit is applied straight away (and recorded); anyone
  * else's waits for a super admin. → { applied }
@@ -58,9 +59,6 @@ export async function POST(req: NextRequest) {
     if (!recordId || typeof body?.changes !== "object" || body.changes === null) {
       return NextResponse.json({ error: "Nothing to change" }, { status: 400 });
     }
-    if (!applyNow && reason.length < 3) {
-      return NextResponse.json({ error: "Say briefly why the change is needed" }, { status: 400 });
-    }
     // Only a super admin may touch a super admin's account.
     if (recordType === "staff" && !isSuperAdmin(staff.role)) {
       const target = await getStaffById(recordId);
@@ -72,7 +70,9 @@ export async function POST(req: NextRequest) {
       type: recordType,
       id: recordId,
       changes: body.changes,
-      reason: reason || "Edited by a super admin",
+      expected: typeof body?.expected === "object" && body.expected !== null ? body.expected : undefined,
+      // An admin's reason is optional: left empty, the Approvals tab says none was given.
+      reason: reason || (applyNow ? "Edited by a super admin" : ""),
       requestedBy: staff.id,
       applyNow,
     });

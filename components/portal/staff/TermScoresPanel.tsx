@@ -9,15 +9,21 @@ import { isAdmin } from "@/lib/roles";
 import type { Class, ScoreRow, SignedInStaff, SubjectProgress, Term } from "@/lib/types";
 import { useConfirm } from "./useConfirm";
 
-type Meta = { canEdit: boolean; readOnlyReason: string | null; caMax: number; examMax: number };
+type Meta = { caMax: number; examMax: number };
 type Progress = Meta & { subjects: SubjectProgress[]; students: number };
 type Sheet = Meta & { rows: ScoreRow[] };
 type Field = "ca" | "exam";
 /** What's typed, as typed ("12." is fine mid-typing), by student. */
 type Edits = Record<string, Partial<Record<Field, string>>>;
+/** A student whose marks someone else saved while this sheet was open, with them as they are now. */
+type Conflict = { studentId: string; ca: number | null; exam: number | null };
 
 const SELECT =
   "mt-1 cursor-pointer rounded-btn border border-smoke bg-white px-3 py-2 text-sm outline-none focus:border-brand-navy";
+
+/** "Ada", "Ada and Bola", "Ada, Bola and Chidi". */
+const listNames = (names: string[]) =>
+  names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 
 const shown = (v: number | null) => (v === null ? "" : String(v));
 /** "" → blank; a number → that number; anything else → NaN (invalid). */
@@ -41,6 +47,8 @@ export default function TermScoresPanel({ me, onUnauthorized }: { me: SignedInSt
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  // Students whose marks someone else saved first, from the last save of this sheet.
+  const [conflicts, setConflicts] = useState<{ url: string; rows: Conflict[] } | null>(null);
   const inputs = useRef(new Map<string, HTMLInputElement>());
 
   const terms = termsQ.data?.terms ?? [];
@@ -61,13 +69,14 @@ export default function TermScoresPanel({ me, onUnauthorized }: { me: SignedInSt
   const meta = sheetQ.data ?? progressQ.data;
   const caMax = meta?.caMax ?? 40;
   const examMax = meta?.examMax ?? 60;
-  const canEdit = meta?.canEdit ?? false;
 
   // Typing for the sheet on screen only; the saved marks show until there is some.
   const typed = edits && edits.url === sheetUrl ? edits.values : {};
   const text = (r: ScoreRow, f: Field) => typed[r.studentId]?.[f] ?? shown(r[f]);
   const value = (r: ScoreRow, f: Field) => parse(text(r, f));
-  const changed = rows.filter((r) => !r.exempt && (["ca", "exam"] as Field[]).some((f) => value(r, f) !== r[f]));
+  const fieldChanged = (r: ScoreRow, f: Field) => value(r, f) !== r[f];
+  const changed = rows.filter((r) => !r.exempt && (fieldChanged(r, "ca") || fieldChanged(r, "exam")));
+  const clashed = new Map((conflicts && conflicts.url === sheetUrl ? conflicts.rows : []).map((c) => [c.studentId, c]));
   const invalid = rows.some((r) => !valid(value(r, "ca"), caMax) || !valid(value(r, "exam"), examMax));
   const entered = rows.filter((r) => !r.exempt && (value(r, "ca") !== null || value(r, "exam") !== null)).length;
   const taking = rows.filter((r) => !r.exempt).length;
@@ -138,8 +147,15 @@ export default function TermScoresPanel({ me, onUnauthorized }: { me: SignedInSt
     setError("");
     setNotice("");
     try {
-      const scores = changed.map((r) => ({ studentId: r.studentId, ca: value(r, "ca"), exam: value(r, "exam") }));
+      // Only the marks changed here, each with the mark this sheet showed: the
+      // server saves nothing if someone else has changed one of them since.
+      const scores = changed.map((r) => ({
+        studentId: r.studentId,
+        ...(fieldChanged(r, "ca") ? { ca: { value: value(r, "ca"), was: r.ca } } : {}),
+        ...(fieldChanged(r, "exam") ? { exam: { value: value(r, "exam"), was: r.exam } } : {}),
+      }));
       await sendJson(`/api/classes/${classId}/scores`, "PUT", { termId, subjectId, scores });
+      setConflicts(null);
       // What was typed is now what is saved: put it in the cache and drop the edits.
       client.setQueryData<Sheet>(apiKey(sheetUrl), (old) =>
         old && { ...old, rows: old.rows.map((r) => ({ ...r, ca: value(r, "ca"), exam: value(r, "exam") })) }
@@ -149,6 +165,18 @@ export default function TermScoresPanel({ me, onUnauthorized }: { me: SignedInSt
       setNotice(`${subject.name}: ${scores.length} student${scores.length === 1 ? "" : "s"} saved.`);
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) return onUnauthorized();
+      if (e instanceof ApiError && e.status === 409 && Array.isArray(e.body?.conflicts)) {
+        // Show their marks (what was typed here stays), and point at the students.
+        const rows409 = e.body.conflicts as Conflict[];
+        setConflicts({ url: sheetUrl, rows: rows409 });
+        client.invalidateQueries({ queryKey: apiKey(sheetUrl), exact: true });
+        const names = rows409.map((c) => rows.find((r) => r.studentId === c.studentId)?.fullName ?? "a student");
+        setError(
+          `Not saved: someone else saved marks for ${listNames(names)} since you opened this sheet. ` +
+            "Their marks are shown now, and what you typed is kept. Check the highlighted rows, then save again."
+        );
+        return;
+      }
       setError(e instanceof Error ? e.message : "Could not save the marks");
     } finally {
       setSaving(false);
@@ -243,11 +271,6 @@ export default function TermScoresPanel({ me, onUnauthorized }: { me: SignedInSt
                 })}
               </div>
 
-              {meta?.readOnlyReason && (
-                <p data-tour="scores-readonly" className="rounded-card border border-smoke bg-white px-4 py-3 text-[13px] text-graphite">
-                  Read only. {meta.readOnlyReason}
-                </p>
-              )}
               {(error || sheetQ.error) && (
                 <p className="text-sm font-semibold text-brand-red" role="alert">{error || sheetQ.error?.message}</p>
               )}
@@ -277,12 +300,21 @@ export default function TermScoresPanel({ me, onUnauthorized }: { me: SignedInSt
                         const ok = valid(ca, caMax) && valid(exam, examMax);
                         const total = ok && (ca !== null || exam !== null) ? (ca ?? 0) + (exam ?? 0) : null;
                         const pct = total === null ? null : (total / (caMax + examMax)) * 100;
+                        const clash = clashed.get(r.studentId);
                         return (
-                          <tr key={r.studentId} className={`border-b border-smoke last:border-0 ${r.exempt ? "bg-mist text-pewter" : ""}`}>
+                          <tr
+                            key={r.studentId}
+                            className={`border-b border-smoke last:border-0 ${r.exempt ? "bg-mist text-pewter" : clash ? "bg-brand-gold/15" : ""}`}
+                          >
                             <td className="px-4 py-2 font-mono text-[13px]">{r.admissionNumber}</td>
                             <td className="px-4 py-2 font-semibold">
                               {r.fullName}
                               {r.exempt && <span className="ml-2 text-[12px] font-normal">Doesn&rsquo;t take this subject</span>}
+                              {clash && (
+                                <span className="block text-[12px] font-normal text-ink">
+                                  Someone else saved: CA {clash.ca ?? "none"}, exam {clash.exam ?? "none"}
+                                </span>
+                              )}
                             </td>
                             {(["ca", "exam"] as Field[]).map((f) => {
                               const max = f === "ca" ? caMax : examMax;
@@ -298,7 +330,7 @@ export default function TermScoresPanel({ me, onUnauthorized }: { me: SignedInSt
                                     inputMode="decimal"
                                     aria-label={`${f === "ca" ? "CA" : "Exam"} for ${r.fullName}`}
                                     aria-invalid={bad}
-                                    disabled={!canEdit || r.exempt}
+                                    disabled={r.exempt}
                                     value={r.exempt ? "" : text(r, f)}
                                     onChange={(e) => setText(r.studentId, f, e.target.value)}
                                     onKeyDown={(e) => onKeyDown(e, r, f)}
@@ -322,17 +354,15 @@ export default function TermScoresPanel({ me, onUnauthorized }: { me: SignedInSt
 
               {rows.length > 0 && (
                 <div className="flex flex-wrap items-center gap-3">
-                  {canEdit && (
-                    <button
-                      type="button"
-                      data-tour="scores-save"
-                      onClick={save}
-                      disabled={saving || changed.length === 0 || invalid}
-                      className="cursor-pointer rounded-btn bg-brand-red px-6 py-2.5 text-sm font-semibold text-white hover:bg-brand-red-dark disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {saving ? "Saving…" : `Save ${subject?.name ?? ""} marks`}
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    data-tour="scores-save"
+                    onClick={save}
+                    disabled={saving || changed.length === 0 || invalid}
+                    className="cursor-pointer rounded-btn bg-brand-red px-6 py-2.5 text-sm font-semibold text-white hover:bg-brand-red-dark disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {saving ? "Saving…" : `Save ${subject?.name ?? ""} marks`}
+                  </button>
                   <span className="text-[13px] text-pewter">
                     {entered} of {taking} entered
                     {changed.length > 0 ? `, ${changed.length} not saved yet` : ""}

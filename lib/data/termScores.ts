@@ -1,4 +1,5 @@
 import "server-only";
+import { ConflictError } from "@/lib/api";
 import { serviceClient } from "@/lib/supabase/server";
 import { CA_MAX, EXAM_MAX, type ScoreRow, type SubjectProgress } from "@/lib/types";
 import { classTermStudentIds } from "./termReports";
@@ -117,44 +118,47 @@ export function validMark(v: unknown, max: number): v is number | null {
   return typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= max && Math.abs(Math.round(v * 100) - v * 100) < 1e-6;
 }
 
+/** One part of a mark being changed: the new value, and the value the person saw. */
+export type MarkChange = { value: number | null; was: number | null };
+
+/** One student's marks to write. Only the parts given are written; the other is left as it is. */
+export type ScoreWrite = { studentId: string; classId: string | null; ca?: MarkChange; exam?: MarkChange };
+
 /**
- * Save one subject's marks for a class and term. A student with both marks
- * blank has their score removed (a score row needs at least one mark).
- * Callers must have checked every student belongs to the class that term.
+ * Write some students' marks for one subject and term, all or nothing (see
+ * save_term_scores in 0021). Each part is written only if it is still the
+ * value the person saw; if any isn't, nothing is written and ConflictError
+ * says whose marks changed, with them as they are now. A student left with
+ * both marks blank has their score removed. Callers check who may write.
  */
-export async function saveSubjectScores(input: {
-  classId: string;
-  termId: string;
-  subjectId: string;
-  rows: { studentId: string; ca: number | null; exam: number | null }[];
-}): Promise<{ saved: number; cleared: number }> {
-  const supa = serviceClient();
-  const keep = input.rows.filter((r) => r.ca !== null || r.exam !== null);
-  const clear = input.rows.filter((r) => r.ca === null && r.exam === null).map((r) => r.studentId);
-  if (keep.length) {
-    const { error } = await supa.from("term_scores").upsert(
-      keep.map((r) => ({
-        student_id: r.studentId,
-        subject_id: input.subjectId,
-        term_id: input.termId,
-        class_id: input.classId,
-        ca_score: r.ca,
-        exam_score: r.exam,
-        ca_max: CA_MAX,
-        exam_max: EXAM_MAX,
+export async function writeScores(input: { termId: string; subjectId: string; rows: ScoreWrite[] }): Promise<{ saved: number; cleared: number }> {
+  if (input.rows.length === 0) return { saved: 0, cleared: 0 };
+  const { data, error } = await serviceClient().rpc("save_term_scores", {
+    p_term_id: input.termId,
+    p_subject_id: input.subjectId,
+    p_ca_max: CA_MAX,
+    p_exam_max: EXAM_MAX,
+    p_rows: input.rows.map((r) => ({
+      student_id: r.studentId,
+      class_id: r.classId,
+      set_ca: r.ca !== undefined,
+      ca: r.ca?.value ?? null,
+      was_ca: r.ca?.was ?? null,
+      set_exam: r.exam !== undefined,
+      exam: r.exam?.value ?? null,
+      was_exam: r.exam?.was ?? null,
+    })),
+  });
+  if (error) throw new Error(error.message);
+  const result = data as { saved?: number; cleared?: number; conflicts?: { student_id: string; ca: number | null; exam: number | null }[] };
+  if (result.conflicts) {
+    throw new ConflictError("Someone else has saved marks for these students since you opened them.", {
+      conflicts: result.conflicts.map((c) => ({
+        studentId: c.student_id,
+        ca: c.ca === null ? null : Number(c.ca),
+        exam: c.exam === null ? null : Number(c.exam),
       })),
-      { onConflict: "student_id,subject_id,term_id" }
-    );
-    if (error) throw new Error(error.message);
+    });
   }
-  if (clear.length) {
-    const { error } = await supa
-      .from("term_scores")
-      .delete()
-      .eq("term_id", input.termId)
-      .eq("subject_id", input.subjectId)
-      .in("student_id", clear);
-    if (error) throw new Error(error.message);
-  }
-  return { saved: keep.length, cleared: clear.length };
+  return { saved: result.saved ?? 0, cleared: result.cleared ?? 0 };
 }

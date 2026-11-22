@@ -1,7 +1,9 @@
 import "server-only";
+import { ConflictError } from "@/lib/api";
 import { serviceClient } from "@/lib/supabase/server";
 import {
   EDITABLE_FIELDS,
+  FIELD_LABELS,
   type ChangeRequest,
   type DeletionSnapshot,
   type EditableField,
@@ -107,17 +109,34 @@ async function apply(type: RecordType, id: string, changes: FieldValues, previou
     const { error } = await supa.auth.admin.updateUserById(id, { email: changes.email, email_confirm: true });
     if (error) throw new ChangeError(`Could not change the sign-in email: ${error.message}`);
   }
-  const row: Row = {};
-  for (const [f, v] of Object.entries(changes)) row[COLUMN[f as EditableField]] = v;
-  const { error } = await supa.from(TABLE[type]).update(row).eq("id", id);
-  if (error) {
-    // Keep sign-in and profile in step if the profile write fails.
+  // Keep sign-in and profile in step if the profile write doesn't happen.
+  const undoEmail = async () => {
     if (type === "staff" && changes.email && previous.email) {
       await supa.auth.admin.updateUserById(id, { email: previous.email, email_confirm: true });
     }
+  };
+  const row: Row = {};
+  for (const [f, v] of Object.entries(changes)) row[COLUMN[f as EditableField]] = v;
+  // Only while every changed field still holds the value it was checked
+  // against: a change made by someone else a moment ago is never overwritten.
+  let q = supa.from(TABLE[type]).update(row).eq("id", id);
+  for (const f of Object.keys(changes) as EditableField[]) {
+    const was = previous[f] ?? null;
+    q = was === null ? q.is(COLUMN[f], null) : q.eq(COLUMN[f], was);
+  }
+  const { data, error } = await q.select("id");
+  if (error) {
+    await undoEmail();
     throw new ChangeError((error as { code?: string }).code === "23505" ? "That value is already used by another record" : error.message);
   }
+  if (!data?.length) {
+    await undoEmail();
+    throw new ConflictError("Someone else changed this record just now, so nothing was saved. Open it again to see the latest details.");
+  }
 }
+
+/** A field's value for comparing: blank and "not recorded" are the same. */
+const same = (a: string | null | undefined, b: string | null | undefined) => (a ?? "") === (b ?? "");
 
 const SELECT = "*, requester:staff!requested_by(full_name), decider:staff!decided_by(full_name)";
 
@@ -186,12 +205,25 @@ export async function requestChange(input: {
   type: RecordType;
   id: string;
   changes: Record<string, unknown>;
+  /** The changed fields as the person saw them; if any has changed since, nothing is done. */
+  expected?: FieldValues;
   reason: string;
   requestedBy: string;
   applyNow: boolean;
 }): Promise<{ applied: boolean }> {
   const current = await currentValues(input.type, input.id);
   if (!current) throw new ChangeError("Record not found");
+  if (input.expected) {
+    const moved = (Object.keys(input.changes) as EditableField[]).filter(
+      (f) => f in input.expected! && !same(current.values[f], input.expected![f])
+    );
+    if (moved.length) {
+      throw new ConflictError(
+        `Someone else changed ${moved.map((f) => FIELD_LABELS[f].toLowerCase()).join(" and ")} since you opened this, so nothing was saved. ` +
+          "Close it and open the record again to see the latest details."
+      );
+    }
+  }
   const changes = await checkChanges(input.type, input.id, input.changes, current.values);
   const previous: FieldValues = Object.fromEntries(Object.keys(changes).map((f) => [f, current.values[f as EditableField] ?? null]));
   const row: Row = {

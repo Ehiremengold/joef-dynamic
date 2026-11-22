@@ -3,6 +3,7 @@ import { serviceClient } from "@/lib/supabase/server";
 import { classLabel } from "@/lib/classes";
 import { CA_MAX, EXAM_MAX, type ClassName } from "@/lib/types";
 import { classesForTerm } from "./termReports";
+import { writeScores, type ScoreWrite } from "./termScores";
 
 type Row = Record<string, unknown>;
 
@@ -123,26 +124,20 @@ export async function planCbtTransfer(input: {
   return rows.sort((x, y) => x.classLabel.localeCompare(y.classLabel) || x.fullName.localeCompare(y.fullName));
 }
 
-/** Write the add/replace rows: only the chosen part changes; the other mark is left as it is. */
+/**
+ * Write a plan's add/replace rows: only the chosen part (CA or exam), and
+ * only where that mark is still what the plan saw (see writeScores). The
+ * other part of each mark is left as it is.
+ */
 export async function applyCbtTransfer(input: {
   termId: string;
   subjectId: string;
   part: ScorePart;
   rows: TransferRow[];
 }): Promise<number> {
-  const write = input.rows.filter((r) => r.action === "add" || r.action === "replace");
-  if (write.length === 0) return 0;
-  const column = input.part === "ca" ? "ca_score" : "exam_score";
-  const { error } = await serviceClient().from("term_scores").upsert(
-    write.map((r) => ({
-      student_id: r.studentId,
-      subject_id: input.subjectId,
-      term_id: input.termId,
-      class_id: r.classId,
-      [column]: r.mark,
-    })),
-    { onConflict: "student_id,subject_id,term_id" }
-  );
-  if (error) throw new Error(error.message);
-  return write.length;
+  const rows: ScoreWrite[] = input.rows
+    .filter((r) => r.action === "add" || r.action === "replace")
+    .map((r) => ({ studentId: r.studentId, classId: r.classId, [input.part]: { value: r.mark, was: r.current } }));
+  const { saved } = await writeScores({ termId: input.termId, subjectId: input.subjectId, rows });
+  return saved;
 }

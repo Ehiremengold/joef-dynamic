@@ -5,8 +5,22 @@ import { keepPreviousData } from "@tanstack/react-query";
 import { ApiError, sendJson, useApi, useInvalidate } from "@/lib/client/api";
 import { CA_MAX, EXAM_MAX, type Exam, type Subject, type Term } from "@/lib/types";
 import { closeOnBackdrop, useCloseOnEscape } from "./useCloseOnEscape";
+import {
+  describePlan,
+  guessSubject,
+  marksToWrite,
+  PartSelect,
+  previewUrl,
+  SELECT,
+  TermSelect,
+  TransferChecks,
+  transferPath,
+  type Part,
+  type TransferAction,
+  type TransferOptions,
+  type TransferPlan,
+} from "./ScoreTransferFields";
 
-type Part = "ca" | "exam";
 type Row = {
   studentId: string;
   fullName: string;
@@ -16,24 +30,17 @@ type Row = {
   total: number;
   mark: number | null;
   current: number | null;
-  action: "add" | "replace" | "keep" | "skip";
+  action: TransferAction;
   note: string | null;
 };
-type Plan = { rows: Row[]; saved?: number; canSave: boolean; subjectWarning: string | null };
+type Plan = TransferPlan<Row>;
 
-const SELECT = "mt-1 w-full cursor-pointer rounded-btn border border-smoke bg-white px-3 py-2 text-sm outline-none focus:border-brand-navy";
-const ACTION: Record<Row["action"], { label: string; className: string }> = {
+const ACTION: Record<TransferAction, { label: string; className: string }> = {
   add: { label: "Add", className: "text-brand-green" },
   replace: { label: "Replace", className: "text-brand-red" },
   keep: { label: "Keep", className: "text-pewter" },
   skip: { label: "Skip", className: "text-pewter" },
 };
-
-/** A subject whose name appears in the exam title ("First Term Mathematics" → Mathematics). */
-function guessSubject(title: string, subjects: Subject[]): string {
-  const t = title.toLowerCase();
-  return [...subjects].sort((a, b) => b.name.length - a.name.length).find((s) => t.includes(s.name.toLowerCase()))?.id ?? "";
-}
 
 /**
  * Put a class test's CBT results on the term score sheet as a subject's CA or
@@ -56,24 +63,19 @@ export default function SendToScoresDialog({ exam, onClose, onUnauthorized }: { 
   const termId = chosenTerm || terms.find((t) => t.isCurrent)?.id || "";
   const subjectId = chosenSubject || guessSubject(exam.title, subjects);
   const max = part === "ca" ? CA_MAX : EXAM_MAX;
-  const options = { termId, subjectId, part, overwrite, wholeMarks };
+  const options: TransferOptions = { termId, subjectId, part, overwrite, wholeMarks };
 
   useCloseOnEscape(onClose);
 
   // The preview: read like any other list, and read again after a save.
-  const previewPath = `/api/exams/${exam.id}/send-to-scores`;
-  const previewUrl =
-    termId && subjectId
-      ? `${previewPath}?${new URLSearchParams({ termId, subjectId, part, overwrite: overwrite ? "1" : "0", wholeMarks: wholeMarks ? "1" : "0" })}`
-      : null;
-  const previewQ = useApi<Plan>(previewUrl, onUnauthorized, { staleTime: 0, placeholderData: keepPreviousData });
+  const previewPath = transferPath(exam.id);
+  const previewQ = useApi<Plan>(previewUrl(exam.id, options), onUnauthorized, { staleTime: 0, placeholderData: keepPreviousData });
   const plan = previewQ.data ?? null;
   const loading = previewQ.isFetching;
   const shownError = error || previewQ.error?.message || "";
 
   const rows = plan?.rows ?? [];
-  const count = (a: Row["action"]) => rows.filter((r) => r.action === a).length;
-  const writing = count("add") + count("replace");
+  const writing = marksToWrite(plan);
 
   async function save() {
     setSaving(true);
@@ -101,18 +103,7 @@ export default function SendToScoresDialog({ exam, onClose, onUnauthorized }: { 
             Students who didn&rsquo;t sit it are left as they are.
           </p>
           <div className="mt-4 grid gap-3 sm:grid-cols-3">
-            <label className="text-[13px] font-semibold">
-              Term
-              <select value={termId} onChange={(e) => setTermId(e.target.value)} className={SELECT}>
-                <option value="">Choose…</option>
-                {terms.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}, {t.sessionName}
-                    {t.isCurrent ? " (current)" : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <TermSelect terms={terms} value={termId} onChange={setTermId} />
             <label className="text-[13px] font-semibold">
               Subject
               <select value={subjectId} onChange={(e) => setSubjectId(e.target.value)} className={SELECT}>
@@ -122,24 +113,9 @@ export default function SendToScoresDialog({ exam, onClose, onUnauthorized }: { 
                 ))}
               </select>
             </label>
-            <label className="text-[13px] font-semibold">
-              Counts as
-              <select value={part} onChange={(e) => setPart(e.target.value as Part)} className={SELECT}>
-                <option value="ca">CA (out of {CA_MAX})</option>
-                <option value="exam">Exam (out of {EXAM_MAX})</option>
-              </select>
-            </label>
+            <PartSelect value={part} onChange={setPart} />
           </div>
-          <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2 text-[13px]">
-            <label className="flex cursor-pointer items-center gap-2">
-              <input type="checkbox" checked={wholeMarks} onChange={(e) => setWholeMarks(e.target.checked)} className="h-4 w-4 accent-brand-navy" />
-              Round to whole marks
-            </label>
-            <label className="flex cursor-pointer items-center gap-2">
-              <input type="checkbox" checked={overwrite} onChange={(e) => setOverwrite(e.target.checked)} className="h-4 w-4 accent-brand-navy" />
-              Replace {part === "ca" ? "CA" : "exam"} marks already entered
-            </label>
-          </div>
+          <TransferChecks part={part} wholeMarks={wholeMarks} overwrite={overwrite} onWholeMarks={setWholeMarks} onOverwrite={setOverwrite} />
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
@@ -184,27 +160,18 @@ export default function SendToScoresDialog({ exam, onClose, onUnauthorized }: { 
 
         <div className="flex flex-wrap items-center gap-3 border-t border-smoke p-6">
           <p className="mr-auto text-[13px] text-graphite">
-            {rows.length > 0 &&
-              [
-                count("add") && `${count("add")} to add`,
-                count("replace") && `${count("replace")} to replace`,
-                count("keep") && `${count("keep")} kept as they are`,
-                count("skip") && `${count("skip")} skipped`,
-              ]
-                .filter(Boolean)
-                .join(", ")}
+            {plan && rows.length > 0 && describePlan(plan)}
           </p>
           {shownError && <p className="w-full text-sm font-semibold text-brand-red" role="alert">{shownError}</p>}
           {plan?.subjectWarning && <p className="w-full text-[13px] font-semibold text-ink">Check the subject: {plan.subjectWarning}</p>}
           {done && <p className="w-full text-sm font-semibold text-brand-green">{done}</p>}
-          {plan && !plan.canSave && <p className="w-full text-[13px] text-ink">Only an admin can change a past term&rsquo;s scores.</p>}
           <button type="button" onClick={onClose} className="cursor-pointer rounded-btn px-4 py-2 text-sm font-semibold text-graphite hover:text-ink">
             {done ? "Close" : "Cancel"}
           </button>
           <button
             type="button"
             onClick={save}
-            disabled={saving || loading || writing === 0 || !plan?.canSave}
+            disabled={saving || loading || writing === 0}
             className="cursor-pointer rounded-btn bg-brand-navy px-4 py-2 text-sm font-semibold text-white hover:bg-ink disabled:cursor-not-allowed disabled:opacity-50"
           >
             {saving ? "Saving…" : `Save ${writing} mark${writing === 1 ? "" : "s"}`}

@@ -46,11 +46,10 @@ export default function EditRecordDialog({
   }, []);
 
   const changed = fields.filter((f) => (values[f] ?? "").trim() !== (initial[f] ?? ""));
-  const needsReason = !superAdmin;
-  const reasonMissing = needsReason && reason.trim().length < 3;
+  const asksReason = !superAdmin;
   const status = !changed.length
     ? "Nothing changed yet. Edit a field above to continue."
-    : `${changed.length} field${changed.length === 1 ? "" : "s"} changed${reasonMissing ? ". Say why it's needed to send it." : ""}`;
+    : `${changed.length} field${changed.length === 1 ? "" : "s"} changed`;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -58,7 +57,9 @@ export default function EditRecordDialog({
     setError("");
     try {
       const changes = Object.fromEntries(changed.map((f) => [f, values[f].trim() || null]));
-      const d = await sendJson<{ applied: boolean }>("/api/change-requests", "POST", { recordType, recordId, changes, reason });
+      // What those fields were when the dialog opened: if someone has changed one since, nothing is saved.
+      const expected = Object.fromEntries(changed.map((f) => [f, initial[f] ?? null]));
+      const d = await sendJson<{ applied: boolean }>("/api/change-requests", "POST", { recordType, recordId, changes, expected, reason });
       onDone(d.applied);
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) return onUnauthorized();
@@ -112,19 +113,18 @@ export default function EditRecordDialog({
         {recordType === "staff" && changed.includes("email") && (
           <p className="mt-2 text-[12px] text-ink">The email is also how they sign in, so their sign-in email changes too.</p>
         )}
-        {needsReason && (
+        {asksReason && (
           <>
             <label className="mt-4 block text-[13px] font-semibold" htmlFor="edit-reason">
-              Why is this change needed? <span className="font-normal text-pewter">(required)</span>
+              Why is this change needed? <span className="font-normal text-pewter">(optional)</span>
             </label>
             <textarea
               id="edit-reason"
               rows={2}
-              required
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               placeholder="e.g. Name misspelt on admission; parent sent the birth certificate"
-              className={`${INPUT} ${changed.length && reasonMissing ? "border-brand-navy bg-brand-gold/10" : ""}`}
+              className={INPUT}
             />
           </>
         )}
@@ -138,7 +138,7 @@ export default function EditRecordDialog({
           </button>
           <button
             type="submit"
-            disabled={busy || changed.length === 0 || reasonMissing}
+            disabled={busy || changed.length === 0}
             className="cursor-pointer rounded-btn bg-brand-navy px-4 py-2 text-sm font-semibold text-white hover:bg-ink disabled:cursor-not-allowed disabled:opacity-50"
           >
             {busy ? "Saving…" : superAdmin ? "Save changes" : "Send for approval"}

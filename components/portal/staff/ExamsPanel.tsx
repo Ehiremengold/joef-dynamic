@@ -6,11 +6,12 @@ import { formatExamTime, isoToLagosInput, lagosInputToIso } from "@/lib/lagosTim
 import { examStatus, nextStatusChange, opensLater, type ExamStatus } from "@/lib/examSchedule";
 import { pageCount, pageRange } from "@/lib/paging";
 import { parseQuestions } from "@/lib/questionParser";
-import { examAccess, type ExamAccess } from "@/lib/roles";
-import { CLASSES, type Exam, type SignedInStaff } from "@/lib/types";
+import { examAccess, isAdmin, type ExamAccess } from "@/lib/roles";
+import { CLASSES, type Class, type Exam, type SignedInStaff } from "@/lib/types";
 import { useConfirm } from "./useConfirm";
 import EntranceAccess from "./EntranceAccess";
 import SendToScoresDialog from "./SendToScoresDialog";
+import BatchSendToScoresDialog from "./BatchSendToScoresDialog";
 import ExamResults from "./ExamResults";
 import IconButton from "./IconButton";
 import Pagination from "./Pagination";
@@ -83,6 +84,11 @@ export default function ExamsPanel({
   // "" means any; group is a class or "entrance", as the Students tab's class filter does.
   const [filters, setFilters] = useState<{ query: string; group: string; status: ExamStatus | "" }>({ query: "", group: "", status: "" });
   const [chosenPage, setPage] = useState(1);
+  const [batchSending, setBatchSending] = useState(false);
+  // Who may send marks: an admin for every class, a class teacher for their own (as the server checks).
+  const classes = useApi<{ classes: Class[] }>("/api/classes", onUnauthorized).data?.classes ?? [];
+  const sendLevels = isAdmin(me.role) ? CLASSES : CLASSES.filter((l) => classes.some((c) => c.level === l && c.classTeacherId === me.id));
+  const classTests = exams.filter((e) => e.type === "class" && sendLevels.some((l) => l === e.className));
   // A new filter starts again from page one.
   const setFilter = (patch: Partial<typeof filters>) => {
     setFilters((f) => ({ ...f, ...patch }));
@@ -148,12 +154,33 @@ export default function ExamsPanel({
                   <option value="closed">Closed (past its closing time)</option>
                 </FilterSelect>
               </div>
-              <p className="text-[13px] text-pewter">
-                {shown.length === exams.length
-                  ? `${exams.length} exam${exams.length === 1 ? "" : "s"}`
-                  : `${shown.length} of ${exams.length} exams match`}
-              </p>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-[13px] text-pewter">
+                  {shown.length === exams.length
+                    ? `${exams.length} exam${exams.length === 1 ? "" : "s"}`
+                    : `${shown.length} of ${exams.length} exams match`}
+                </p>
+                {classTests.length > 0 && (
+                  <button
+                    type="button"
+                    data-tour="exams-batch-send"
+                    onClick={() => setBatchSending(true)}
+                    className="cursor-pointer rounded-btn border border-brand-navy px-3 py-1.5 text-sm font-semibold text-brand-navy transition-colors duration-200 hover:bg-brand-navy hover:text-white"
+                  >
+                    Send several to Term scores
+                  </button>
+                )}
+              </div>
             </div>
+            {batchSending && (
+              <BatchSendToScoresDialog
+                exams={classTests}
+                levels={sendLevels}
+                initialClass={filters.group}
+                onClose={() => setBatchSending(false)}
+                onUnauthorized={onUnauthorized}
+              />
+            )}
             {shown.length === 0 ? (
               <p className="mt-4 rounded-card border border-smoke bg-white p-6 text-sm text-graphite">
                 No exams match. Try another class, status or title.

@@ -273,6 +273,11 @@ function examsTour(role: StaffRole): TourStep[] {
       text: "Type part of a title to search, or narrow the list by class (or Common entrance) and by status: open to students now, scheduled for later, hidden, or past its closing time. The list shows 20 exams a page.",
     },
     {
+      target: "exams-batch-send",
+      title: "Send several to Term scores",
+      text: "Send a class's tests to the term score sheet in one go. Choose the class, the term, and CA or exam, then tick the tests and check each one's subject (it is guessed from the title). Each ticked test shows how many marks it would add or replace before anything is saved, and two tests can't go into the same subject. Class teachers see only their own classes.",
+    },
+    {
       target: "exams-list",
       title: "All exams",
       text: "The exams that match your search and filters, newest first, 20 a page. The badge shows the class (or Entrance), with the number of questions and the time allowed. The icons on each card edit its title, class and duration, and open its Questions, Date & time, Sittings and How students did, or Send it to Term scores: point at one to see its name.",
@@ -315,7 +320,7 @@ function examsTour(role: StaffRole): TourStep[] {
     {
       target: "exam-send",
       title: "Send to Term scores",
-      text: "Put this test's CBT results on the term score sheet. Choose the term, the subject, and whether it counts as CA (out of 40) or exam (out of 60): a score of 32/40 becomes CA 32 or exam 48. You see every student's mark before anything is saved. Marks already entered are kept unless you tick Replace. Class teachers send for their own class and the current term; admins for anyone.",
+      text: "Put this test's CBT results on the term score sheet. Choose the term, the subject, and whether it counts as CA (out of 40) or exam (out of 60): a score of 32/40 becomes CA 32 or exam 48. You see every student's mark before anything is saved. Marks already entered are kept unless you tick Replace. Class teachers send for their own class, admins for any class, either for any term.",
     },
     {
       target: "exam-download",
@@ -397,7 +402,7 @@ const STUDENTS_TOUR: TourStep[] = [
   {
     target: "student-edit",
     title: "Edit",
-    text: "Correct a student's details: name, admission number, gender, date of birth, phone, address or entry year. An admin's change goes to a super admin for approval (say why it's needed); a super admin's is saved straight away. While a change is waiting, the student shows “Change pending”.",
+    text: "Correct a student's details: name, admission number, gender, date of birth, phone, address or entry year. An admin's change goes to a super admin for approval, with a reason if you want to give one; a super admin's is saved straight away. While a change is waiting, the student shows “Change pending”.",
   },
   {
     target: "student-pin",
@@ -497,12 +502,12 @@ function scoresTour(role: StaffRole): TourStep[] {
       title: "Term scores",
       text: isAdmin(role)
         ? "Enter or correct any class's CA and exam marks for a term. They print on report sheets and transcripts, and make up the class average. You can change any term, including past ones."
-        : "Enter your class's CA and exam marks for each subject this term. They print on report sheets and transcripts, and make up the class average. Past terms are read only: ask an admin to correct one.",
+        : "Enter your class's CA and exam marks for each subject. They print on report sheets and transcripts, and make up the class average. You can change any term, including past ones.",
     },
     {
       target: "scores-term",
       title: "Term",
-      text: "Opens on the current term.",
+      text: "Opens on the current term. Choose an earlier term to correct it.",
     },
     {
       target: "scores-class",
@@ -515,11 +520,6 @@ function scoresTour(role: StaffRole): TourStep[] {
       text: "Each subject the class takes, with how many students have marks (e.g. 25/30). Pick one to open its sheet. The number turns green when everyone is done.",
     },
     {
-      target: "scores-readonly",
-      title: "Read only",
-      text: "You're looking at a past term. Its marks can be read here, but only an admin can change them, so last year's results aren't rewritten by accident.",
-    },
-    {
       target: "scores-table",
       title: "Type the marks",
       text: "CA and exam for each student. The total and grade fill in as you type. Press Enter to go down the column. Already have them in Excel? Click the first student's CA box and paste the column; paste two columns (CA, then exam) to fill both. A mark outside the range turns red. Leave both boxes empty to remove a student's mark.",
@@ -527,7 +527,7 @@ function scoresTour(role: StaffRole): TourStep[] {
     {
       target: "scores-save",
       title: "Save",
-      text: "Saves this subject's marks. If you switch subject, class or term with marks not saved, you'll be asked first.",
+      text: "Saves the marks you changed, and only those. If someone else saved marks for the same students while you were typing, nothing is saved: their marks are shown, yours are kept, and those students are highlighted so you can check them and save again. If you switch subject, class or term with marks not saved, you'll be asked first.",
     },
   ];
 }

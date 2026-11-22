@@ -123,7 +123,11 @@ export default function ApprovalsTab({ me, onUnauthorized }: { me: SignedInStaff
                     </tbody>
                   </table>
                   )}
-                  <p className="mt-2 text-[13px] text-graphite">&ldquo;{r.reason}&rdquo;</p>
+                  {r.reason ? (
+                    <p className="mt-2 text-[13px] text-graphite">&ldquo;{r.reason}&rdquo;</p>
+                  ) : (
+                    <p className="mt-2 text-[13px] italic text-pewter">No reason given</p>
+                  )}
                   <p className="mt-1 text-[12px] text-pewter">
                     {r.requestedBy ?? "Someone"}, {when(r.createdAt)}
                     {r.decidedBy && r.status !== "pending" && r.decidedBy !== r.requestedBy ? `. Decided by ${r.decidedBy}, ${when(r.decidedAt!)}` : ""}
