@@ -21,9 +21,34 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Who to ask when a request answers 401 because the session ended: the staff
+ * page signs the same person in again over the page, without losing what's
+ * on it, and resolves true once they have. Null where there is no such page.
+ */
+let signInAgain: (() => Promise<boolean>) | null = null;
+
+/** Set by the staff page while it is open; returns the undo. */
+export function setSignInAgain(fn: () => Promise<boolean>): () => void {
+  signInAgain = fn;
+  return () => {
+    if (signInAgain === fn) signInAgain = null;
+  };
+}
+
+/**
+ * fetch, but a 401 (the session ended) waits for the person to sign in again
+ * and then sends the request once more, so a save they made isn't lost.
+ */
+export async function fetchSignedIn(url: string, init?: RequestInit): Promise<Response> {
+  const res = await fetch(url, init);
+  if (res.status !== 401 || !signInAgain) return res;
+  return (await signInAgain()) ? fetch(url, init) : res;
+}
+
 /** GET a portal API route as JSON, throwing ApiError (with the route's own message) on failure. */
 export async function getJson<T>(url: string): Promise<T> {
-  const res = await fetch(url);
+  const res = await fetchSignedIn(url);
   const body = await res.json().catch(() => null);
   if (!res.ok) throw new ApiError(body?.error || "Something went wrong", res.status, body);
   return body as T;
@@ -31,7 +56,7 @@ export async function getJson<T>(url: string): Promise<T> {
 
 /** POST/PUT/PATCH/DELETE a portal API route; same errors as getJson. */
 export async function sendJson<T = unknown>(url: string, method: string, body?: unknown): Promise<T> {
-  const res = await fetch(url, {
+  const res = await fetchSignedIn(url, {
     method,
     headers: body === undefined ? undefined : { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
@@ -19,10 +19,12 @@ import SessionsPanel from "@/components/portal/staff/SessionsPanel";
 import TermScoresPanel from "@/components/portal/staff/TermScoresPanel";
 import ApprovalsTab from "@/components/portal/staff/ApprovalsTab";
 import ChangePasswordDialog from "@/components/portal/staff/ChangePasswordDialog";
+import { useConfirm } from "@/components/portal/staff/useConfirm";
+import { clearDrafts, examsWithDrafts } from "@/lib/client/questionDrafts";
 import GuideTour from "@/components/portal/GuideTour";
 import { STAFF_SIGNIN_TOUR, staffDashboardTour, staffTabTour, type StaffTab } from "@/lib/tours";
 import { isAdmin, isSuperAdmin, ROLE_LABELS } from "@/lib/roles";
-import { forgetSignedIn, SIGNED_IN, useApi } from "@/lib/client/api";
+import { forgetSignedIn, setSignInAgain, SIGNED_IN, useApi } from "@/lib/client/api";
 import type { SignedInStaff, Term } from "@/lib/types";
 
 type Me = SignedInStaff | null;
@@ -35,6 +37,12 @@ function useStaff() {
 
   const refresh = useCallback(() => {
     refetch();
+  }, [refetch]);
+
+  /** Ask the server who is signed in now. */
+  const checkMe = useCallback(async (): Promise<Me> => {
+    const r = await refetch();
+    return r.data?.kind === "staff" && r.data.staff ? r.data.staff : null;
   }, [refetch]);
 
   // A new person at the keyboard must never see the last person's cached lists.
@@ -59,8 +67,97 @@ function useStaff() {
     }
   }, [client]);
 
-  return { me, loading: isPending, refresh, signedIn, signOut, signingOut };
+  return { me, loading: isPending, refresh, checkMe, signedIn, signOut, signingOut };
 }
+
+/**
+ * When a signed-in person's session ends mid-task (a request answers 401),
+ * keep their page on screen and ask them to sign in again over it, rather
+ * than swapping the page for the sign-in form and losing what they typed.
+ *
+ * `shown` is who the page is for: the signed-in person, or the one whose
+ * session just ended. `waitForSignIn` lets a save wait for the new sign-in
+ * and then be sent again.
+ */
+function useSignInAgainFlow(me: Me, checkMe: () => Promise<Me>) {
+  const client = useQueryClient();
+  const [held, setHeld] = useState<SignedInStaff | null>(null);
+  const [expired, setExpired] = useState(false);
+  const shown = me ?? held;
+  const shownRef = useRef(shown);
+  shownRef.current = shown;
+  const waiters = useRef<((ok: boolean) => void)[]>([]);
+
+  const settle = useCallback((ok: boolean) => {
+    const w = waiters.current;
+    waiters.current = [];
+    w.forEach((resolve) => resolve(ok));
+  }, []);
+
+  const finish = useCallback(
+    (now: Me, person: SignedInStaff) => {
+      setHeld(null);
+      setExpired(false);
+      if (now && now.id === person.id) {
+        // Still them: read again only the lists that failed meanwhile.
+        void client.invalidateQueries({ predicate: (q) => isPageData(q) && q.state.status === "error" });
+        settle(true);
+      } else {
+        // Someone else is signed in now: never show them this person's lists.
+        client.removeQueries({ predicate: isPageData });
+        settle(false);
+      }
+    },
+    [client, settle]
+  );
+
+  /** A request answered 401 (or 403): is this person still signed in? */
+  const onUnauthorized = useCallback(async () => {
+    const person = shownRef.current;
+    if (!person) {
+      // Nobody's page to keep: the sign-in form shows as usual.
+      await checkMe();
+      settle(false);
+      return;
+    }
+    setHeld(person); // keeps the page while we ask
+    const now = await checkMe();
+    if (now) finish(now, person);
+    else setExpired(true);
+  }, [checkMe, finish]);
+
+  const waitForSignIn = useCallback(
+    () =>
+      new Promise<boolean>((resolve) => {
+        waiters.current.push(resolve);
+        void onUnauthorized();
+      }),
+    [onUnauthorized]
+  );
+
+  /** Signed in again from the dialog. */
+  const signedInAgain = useCallback(async () => {
+    const person = shownRef.current;
+    const now = await checkMe();
+    if (person) finish(now, person);
+  }, [checkMe, finish]);
+
+  /** Gave up from the dialog (signed out instead). */
+  const abandon = useCallback(() => {
+    setHeld(null);
+    setExpired(false);
+    settle(false);
+  }, [settle]);
+
+  // Every save or read made with getJson/sendJson (lib/client/api.ts) that
+  // meets an ended session waits here, then is sent again.
+  useEffect(() => setSignInAgain(waitForSignIn), [waitForSignIn]);
+
+  return { shown, expired, onUnauthorized, signedInAgain, abandon };
+}
+
+/** A cached list of the page's data, as opposed to "who is signed in" (/api/me). */
+const isPageData = (q: { queryKey: readonly unknown[] }) => q.queryKey[0] !== "/api/me";
 
 /** How many requests are waiting for this super admin's decision (0 for everyone else). */
 function useWaitingApprovals(me: Me): number {
@@ -116,15 +213,44 @@ const TABS: [Tab, string][] = [
 ];
 
 export default function StaffPage() {
-  const { me, loading, refresh, signedIn, signOut, signingOut } = useStaff();
+  const { me: signedInNow, loading, checkMe, signedIn, signOut, signingOut } = useStaff();
+  const session = useSignInAgainFlow(signedInNow, checkMe);
+  // Who the page is for: also the person whose session just ended, so their page stays.
+  const me = session.shown;
   const [chosenTab, setTab] = useTab();
   // A teacher never lands on an admin-only tab, even one remembered from an admin's visit.
   const tab: Tab = me && !isAdmin(me.role) && ADMIN_TABS.includes(chosenTab) ? "exams" : chosenTab;
   const waiting = useWaitingApprovals(me);
   const [changingPassword, setChangingPassword] = useState(false);
+  const { confirm, dialog } = useConfirm();
+
+  /**
+   * Sign out the person the page is for. Unsaved questions hold answers, so
+   * they are removed from this computer; with any waiting, ask first.
+   */
+  async function confirmAndSignOut() {
+    if (!me) return;
+    const n = examsWithDrafts(me.id).length;
+    if (n > 0) {
+      const ok = await confirm({
+        title: "Sign out and discard unsaved questions?",
+        message: `You have questions you haven't added or saved yet in ${n} test${n === 1 ? "" : "s"}. Signing out removes them from this computer.`,
+        confirmLabel: "Sign out anyway",
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    clearDrafts(me.id);
+    await signOut();
+    session.abandon();
+  }
 
   return (
     <>
+      {dialog}
+      {session.expired && me && (
+        <SessionEndedDialog person={me} onSignedIn={session.signedInAgain} onSignOut={confirmAndSignOut} />
+      )}
       <Nav wide />
       <main className="min-h-[70vh] bg-mist">
         <section className="bg-brand-navy text-white">
@@ -150,7 +276,7 @@ export default function StaffPage() {
                     </button>
                   </p>
                 )}
-                {changingPassword && <ChangePasswordDialog onClose={() => setChangingPassword(false)} onUnauthorized={refresh} />}
+                {changingPassword && <ChangePasswordDialog onClose={() => setChangingPassword(false)} onUnauthorized={session.onUnauthorized} />}
                 {me && <CurrentTerm onOpen={isAdmin(me.role) ? () => setTab("sessions") : undefined} />}
               </div>
               {!loading && (
@@ -169,7 +295,7 @@ export default function StaffPage() {
                     <button
                       type="button"
                       data-tour="staff-signout"
-                      onClick={signOut}
+                      onClick={confirmAndSignOut}
                       disabled={signingOut}
                       className="cursor-pointer rounded-btn border border-white/40 px-4 py-2 text-sm font-semibold text-white transition-colors duration-200 hover:bg-white hover:text-ink disabled:cursor-wait disabled:opacity-60"
                     >
@@ -228,13 +354,50 @@ export default function StaffPage() {
                   autoStartDelay={1400}
                 />
               </div>
-              <TabPanel tab={tab} me={me} onUnauthorized={refresh} />
+              {/* Keyed by person: someone else signing in starts every panel afresh. */}
+              <TabPanel key={me.id} tab={tab} me={me} onUnauthorized={session.onUnauthorized} />
             </>
           )}
         </section>
       </main>
       <Footer wide />
     </>
+  );
+}
+
+/**
+ * Over the page, when the session of the person using it has ended: sign in
+ * again and carry on where they were. Nothing on the page is lost meanwhile.
+ */
+function SessionEndedDialog({
+  person,
+  onSignedIn,
+  onSignOut,
+}: {
+  person: SignedInStaff;
+  onSignedIn: () => void;
+  onSignOut: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-ink/40 p-4">
+      <div role="dialog" aria-modal="true" aria-labelledby="staff-signin-title" className="w-full max-w-[420px]">
+        <StaffLogin
+          onSignedIn={onSignedIn}
+          title="Please sign in again"
+          intro={`Your sign-in has ended, ${person.fullName}. Sign in again to carry on: everything on the page is kept, and what you were saving is sent again once you're back. If something still shows as not saved, press its button again.`}
+          initialEmail={person.email}
+          footer={
+            <button
+              type="button"
+              onClick={onSignOut}
+              className="mt-3 w-full cursor-pointer text-sm font-semibold text-graphite hover:text-ink"
+            >
+              Sign out instead
+            </button>
+          }
+        />
+      </div>
+    </div>
   );
 }
 
@@ -289,8 +452,20 @@ function CurrentTerm({ onOpen }: { onOpen?: () => void }) {
   );
 }
 
-function StaffLogin({ onSignedIn }: { onSignedIn: () => void }) {
-  const [email, setEmail] = useState("");
+function StaffLogin({
+  onSignedIn,
+  title = "Staff sign in",
+  intro = "Sign in with your school email and password. Accounts are created by an administrator.",
+  initialEmail = "",
+  footer,
+}: {
+  onSignedIn: () => void;
+  title?: string;
+  intro?: string;
+  initialEmail?: string;
+  footer?: React.ReactNode;
+}) {
+  const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -316,11 +491,8 @@ function StaffLogin({ onSignedIn }: { onSignedIn: () => void }) {
       onSubmit={submit}
       className="mx-auto max-w-[420px] rounded-card border border-smoke bg-white p-6 md:p-8"
     >
-      <h2 className="font-display text-xl font-bold tracking-tight">Staff sign in</h2>
-      <p className="mt-2 text-sm leading-relaxed text-graphite">
-        Sign in with your school email and password. Accounts are created by an
-        administrator.
-      </p>
+      <h2 id="staff-signin-title" className="font-display text-xl font-bold tracking-tight">{title}</h2>
+      <p className="mt-2 text-sm leading-relaxed text-graphite">{intro}</p>
 
       <label className="mt-6 block text-sm font-semibold" htmlFor="staff-email">
         Email
@@ -358,6 +530,7 @@ function StaffLogin({ onSignedIn }: { onSignedIn: () => void }) {
       >
         {loading ? "Signing in…" : "Sign in"}
       </button>
+      {footer}
     </form>
   );
 }

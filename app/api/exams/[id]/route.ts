@@ -10,7 +10,8 @@ import {
   deleteExam,
   getExam,
   isOpen,
-  replaceQuestions,
+  questionsChanged,
+  saveQuestions,
   toPublicExam,
   updateExamMeta,
 } from "@/lib/data/exams";
@@ -46,9 +47,11 @@ export async function GET(req: NextRequest, { params }: Params) {
 }
 
 /**
- * PUT /api/exams/:id — Partial: { title?, className?, durationMins?, active?, opensAt?, closesAt?, reviewOpen?, questions? }.
+ * PUT /api/exams/:id — Partial: { title?, className?, durationMins?, active?, opensAt?, closesAt?, reviewOpen?, questions?, expectedQuestionIds? }.
  * Questions are validated and replaced wholesale; existing ones are sent back
- * with their id. A teacher can only change their own exams. An admin can
+ * with their id. expectedQuestionIds (the ids the screen showed) makes a save
+ * from an out-of-date screen fail with 409 instead of overwriting newer
+ * questions. A teacher can only change their own exams. An admin can
  * change anyone's, except that removing questions from someone else's exam
  * needs a super admin's approval (a deletion request).
  */
@@ -67,6 +70,21 @@ export async function PUT(req: NextRequest, { params }: Params) {
     const body = await req.json().catch(() => null);
     if (!body) {
       return NextResponse.json({ error: "Invalid body" }, { status: 400 });
+    }
+    // The question ids the person's screen showed, in order. A screen loaded
+    // before this check existed sends none, and is saved as before.
+    let expectedIds: string[] | null = null;
+    if (Array.isArray(body.questions) && body.expectedQuestionIds !== undefined) {
+      if (!Array.isArray(body.expectedQuestionIds) || !body.expectedQuestionIds.every((x: unknown) => typeof x === "string")) {
+        return NextResponse.json({ error: "Invalid expectedQuestionIds" }, { status: 400 });
+      }
+      expectedIds = body.expectedQuestionIds;
+      // Checked first, so an out-of-date screen is told that, not that it is
+      // removing someone's questions. saveQuestions checks again, atomically.
+      const now = exam.questions.map((q) => q.id);
+      if (now.length !== expectedIds!.length || now.some((id, i) => id !== expectedIds![i])) {
+        throw questionsChanged(now.length);
+      }
     }
     if (access === "contribute" && Array.isArray(body.questions)) {
       const kept = new Set(body.questions.map((q: { id?: unknown }) => q?.id).filter(Boolean));
@@ -104,7 +122,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
         }
         cleaned.push({ text: q.text.trim().normalize("NFC"), options, correctIndex });
       }
-      await replaceQuestions(id, cleaned);
+      await saveQuestions(id, cleaned, expectedIds);
     }
 
     // A class test can move to another class; an entrance test has none.

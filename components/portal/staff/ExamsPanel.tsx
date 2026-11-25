@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { useApi, useInvalidate } from "@/lib/client/api";
+import { ApiError, apiKey, fetchSignedIn, sendJson, useApi, useInvalidate } from "@/lib/client/api";
+import { useQueryClient } from "@tanstack/react-query";
 import { formatExamTime, isoToLagosInput, lagosInputToIso } from "@/lib/lagosTime";
 import { examStatus, nextStatusChange, opensLater, type ExamStatus } from "@/lib/examSchedule";
 import { pageCount, pageRange } from "@/lib/paging";
@@ -20,8 +21,29 @@ import RichText from "@/components/portal/RichText";
 import { plainText, tidy } from "@/lib/richText";
 import QuestionToolbar from "./QuestionToolbar";
 import RichField, { type RichFieldControls } from "./RichField";
+import {
+  editSlot,
+  forgetDraft,
+  readDraft,
+  readEditDrafts,
+  useExamsWithDrafts,
+  useKeepDraft,
+  useSavedDraft,
+  writeDraft,
+  type DraftOf,
+  type SavedDraft,
+} from "@/lib/client/questionDrafts";
 
-/** Cookie-authenticated fetch; calls onUnauthorized on a 401 so the shell re-checks. */
+/** Formatting alone ("<b></b>") isn't words. */
+const hasWords = (t: string) => plainText(t).trim() !== "";
+
+/** "21 Nov 2026, 9:14 am": when a draft was last typed, in Lagos time. */
+const draftTime = (ms: number) => formatExamTime(new Date(ms).toISOString());
+
+/**
+ * Cookie-authenticated fetch. A 401 (the session ended) waits for the person
+ * to sign in again over the page, then the request is sent once more.
+ */
 type AuthFetch = (url: string, init?: RequestInit) => Promise<Response>;
 
 /** What the card's switch says for each status. */
@@ -65,20 +87,16 @@ export default function ExamsPanel({
   const loading = examsQ.isPending;
   const error = examsQ.error?.message ?? "";
 
-  const authFetch: AuthFetch = useCallback(
-    async (url, init) => {
-      const res = await fetch(url, {
-        ...init,
-        headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
-      });
-      if (res.status === 401) {
-        onUnauthorized();
-        throw new Error("Your session has expired. Please sign in again");
-      }
-      return res;
-    },
-    [onUnauthorized]
-  );
+  const authFetch: AuthFetch = useCallback(async (url, init) => {
+    const res = await fetchSignedIn(url, {
+      ...init,
+      headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
+    });
+    if (res.status === 401) throw new Error("Your session has expired. Please sign in again");
+    return res;
+  }, []);
+  const drafted = useExamsWithDrafts(me.id);
+  const draftExams = exams.filter((e) => drafted.has(e.id));
 
   const now = useStatusClock(exams);
   // "" means any; group is a class or "entrance", as the Students tab's class filter does.
@@ -129,6 +147,26 @@ export default function ExamsPanel({
           </p>
         ) : (
           <>
+            {draftExams.length > 0 && (
+              <div data-tour="exams-drafts" role="status" className="mt-4 rounded-btn bg-brand-gold/20 px-4 py-3 text-sm text-ink">
+                <p>
+                  You have questions you haven&rsquo;t added yet in{" "}
+                  {draftExams.map((e, i) => (
+                    <span key={e.id}>
+                      {i > 0 && (i === draftExams.length - 1 ? " and " : ", ")}
+                      <button
+                        type="button"
+                        onClick={() => setFilter({ query: e.title, group: "", status: "" })}
+                        className="cursor-pointer font-semibold text-brand-navy underline"
+                      >
+                        {e.title}
+                      </button>
+                    </span>
+                  ))}
+                  . They are kept on this computer: open the test&rsquo;s Questions to add or discard them.
+                </p>
+              </div>
+            )}
             <div data-tour="exams-filter" className="mt-4 space-y-3">
               <input
                 type="text"
@@ -190,6 +228,8 @@ export default function ExamsPanel({
                 {shown.slice(from, to + 1).map((exam) => (
                   <ExamCard key={exam.id} exam={exam} now={now} authFetch={authFetch} onChanged={reload}
                   access={examAccess(me, exam)}
+                  draftOf={{ staffId: me.id, examId: exam.id }}
+                  hasDraft={drafted.has(exam.id)}
                   onRequested={() => invalidate("/api/deletion-requests")}
                   onUnauthorized={onUnauthorized}
                 />
@@ -315,6 +355,8 @@ function ExamCard({
   authFetch,
   onChanged,
   access,
+  draftOf,
+  hasDraft,
   onRequested,
   onUnauthorized,
 }: {
@@ -324,6 +366,10 @@ function ExamCard({
   authFetch: AuthFetch;
   onChanged: () => void;
   access: ExamAccess;
+  /** Where the signed-in teacher's unsaved questions for this test are kept. */
+  draftOf: DraftOf;
+  /** Whether they have questions for this test not added or saved yet. */
+  hasDraft: boolean;
   onRequested: () => void;
   onUnauthorized: () => void;
 }) {
@@ -333,6 +379,7 @@ function ExamCard({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const { confirm, dialog } = useConfirm();
+  const client = useQueryClient();
 
   /** Ask a super admin to delete this exam (no question) or one of its questions. */
   async function requestDeletion(questionIndex?: number) {
@@ -364,15 +411,24 @@ function ExamCard({
     setBusy(true);
     setError("");
     try {
-      const res = await authFetch(`/api/exams/${exam.id}`, {
-        method: "PUT",
-        body: JSON.stringify(patch),
-      });
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.error || "Update failed");
+      // With the questions this screen showed, so a save from an out-of-date
+      // copy of the test is refused instead of erasing newer questions.
+      const body = patch.questions ? { ...patch, expectedQuestionIds: exam.questions.map((q) => q.id) } : patch;
+      const { exam: saved } = await sendJson<{ exam: Exam }>(`/api/exams/${exam.id}`, "PUT", body);
+      // Shown at once: every save gives the questions new ids, and the next
+      // save must be checked against those, not the ones before this save.
+      client.setQueryData<{ exams: Exam[] }>(apiKey("/api/exams"), (old) =>
+        old ? { ...old, exams: old.exams.map((e) => (e.id === saved.id ? saved : e)) } : old
+      );
       onChanged();
-      return d.exam as Exam;
+      return saved;
     } catch (e) {
+      // Changed elsewhere: show the test as it is now. What they typed stays in its box.
+      if (e instanceof ApiError && e.status === 409 && e.body?.questionsChanged) onChanged();
+      if (e instanceof ApiError && e.status === 401) {
+        setError("Your session has expired. Please sign in again");
+        return null;
+      }
       setError(e instanceof Error ? e.message : "Update failed");
       return null;
     } finally {
@@ -417,6 +473,16 @@ function ExamCard({
             <ScheduleStatus exam={exam} now={now} />
             {exam.active && exam.questions.length === 0 && (
               <p className="text-[13px] font-semibold text-brand-red">No questions yet, so students can&rsquo;t see it.</p>
+            )}
+            {hasDraft && !open && access !== "view" && (
+              <button
+                type="button"
+                data-tour="exam-draft"
+                onClick={() => setPanel("questions")}
+                className="cursor-pointer text-left text-[13px] font-semibold text-brand-red hover:underline"
+              >
+                You have questions not added yet. Open them
+              </button>
             )}
           </div>
           {access === "view" && (
@@ -498,6 +564,7 @@ function ExamCard({
       {open && (
         <QuestionEditor
           exam={exam}
+          draftOf={draftOf}
           busy={busy}
           access={access}
           onSave={async (questions) => (await update({ questions })) !== null}
@@ -897,14 +964,37 @@ function SittingsPanel({ exam, authFetch, access }: { exam: Exam; authFetch: Aut
 }
 
 type QuestionDraft = Omit<Exam["questions"][number], "id" | "position">;
+type QuestionFields = QuestionDraft;
 
-/** The question form, for adding a question or editing one. Empty options are dropped on save. */
+/** Four option boxes to type in, filled from `from`. */
+const fourOptions = (from: string[] = []) => [...from, "", "", "", ""].slice(0, Math.max(4, from.length));
+
+/** The two ways a typed question can't be saved yet, or null when it can. */
+function questionProblem(f: QuestionFields): string | null {
+  if (!hasWords(f.text) || f.options.filter(hasWords).length < 2) return "Enter the question and at least two options";
+  if (!hasWords(f.options[f.correctIndex] ?? "")) return "The correct answer can't be an empty option";
+  return null;
+}
+
+/** A typed question as it is saved: tidied, with empty options dropped. Check questionProblem first. */
+function toQuestion(f: QuestionFields): QuestionDraft {
+  const kept = f.options.map((o, i) => ({ o: tidy(o), i })).filter(({ o }) => hasWords(o));
+  return { text: tidy(f.text), options: kept.map(({ o }) => o), correctIndex: kept.findIndex(({ i }) => i === f.correctIndex) };
+}
+
+/**
+ * The question form, for adding a question or editing one. Empty options are
+ * dropped on save. What's typed is kept as the teacher's draft until it is
+ * saved (see lib/client/questionDrafts): an added question in the test's
+ * "one" box, an edit under the question as it was.
+ */
 function QuestionForm({
   name,
   initial,
   title,
   submitLabel,
   busy,
+  draftOf,
   onSubmit,
   onCancel,
 }: {
@@ -913,52 +1003,94 @@ function QuestionForm({
   title: string;
   submitLabel: string;
   busy: boolean;
+  draftOf: DraftOf;
   /** Resolves to whether it was saved; the form clears itself after a saved add. */
   onSubmit: (q: QuestionDraft) => Promise<boolean>;
   onCancel?: () => void;
 }) {
-  const blankOptions = () => {
-    const opts = [...(initial?.options ?? [])];
-    while (opts.length < 4) opts.push("");
-    return opts;
-  };
-  const [text, setText] = useState(initial?.text ?? "");
-  const [options, setOptions] = useState(blankOptions);
-  const [correctIndex, setCorrectIndex] = useState(initial?.correctIndex ?? 0);
+  const { confirm, dialog } = useConfirm();
+  // An edit's draft is kept under the question as it was, so it is found again.
+  const [{ box, slot, original }] = useState(() => {
+    const original = initial ? { text: initial.text, options: initial.options } : null;
+    return { box: initial ? ("edit" as const) : ("one" as const), slot: original ? editSlot(original) : "", original };
+  });
+  const saved = useSavedDraft(draftOf, box, slot);
+  const [text, setText] = useState(saved?.value.text ?? initial?.text ?? "");
+  const [options, setOptions] = useState(() => fourOptions(saved?.value.options ?? initial?.options));
+  const [correctIndex, setCorrectIndex] = useState(saved?.value.correctIndex ?? initial?.correctIndex ?? 0);
   const [formError, setFormError] = useState("");
   // The box the toolbar acts on: the last one typed in, or the question itself before any.
   const focused = useRef<RichFieldControls | null>(null);
   const questionBox = useRef<RichFieldControls | null>(null);
   const target = () => focused.current ?? questionBox.current;
   const setOption = (i: number) => (value: string) => setOptions((prev) => prev.map((o, j) => (j === i ? value : o)));
-  // Formatting alone ("<b></b>") isn't an answer.
-  const hasWords = (t: string) => plainText(t).trim() !== "";
+
+  /** Show these fields, or with null the question as it started (blank, or as saved). */
+  function show(f: QuestionFields | null) {
+    setText(f?.text ?? initial?.text ?? "");
+    setOptions(fourOptions(f?.options ?? initial?.options));
+    setCorrectIndex(f?.correctIndex ?? initial?.correctIndex ?? 0);
+  }
+  const fields = { text, options, correctIndex };
+  const changed = initial
+    ? text !== initial.text ||
+      correctIndex !== initial.correctIndex ||
+      options.filter(hasWords).join("\u0000") !== initial.options.join("\u0000")
+    : hasWords(text) || options.some(hasWords);
+  const { restoredAt, forgetRestored } = useKeepDraft(
+    draftOf,
+    box,
+    slot,
+    saved,
+    !changed ? null : original ? { ...fields, original } : fields,
+    show
+  );
+  function reset() {
+    show(null);
+    forgetRestored();
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    const filled = options.filter(hasWords);
-    if (!hasWords(text) || filled.length < 2) return setFormError("Enter the question and at least two options");
-    if (!hasWords(options[correctIndex] ?? "")) return setFormError("The correct answer can't be an empty option");
-    const kept = options.map((o, i) => ({ o: tidy(o), i })).filter(({ o }) => hasWords(o));
+    const problem = questionProblem(fields);
+    if (problem) return setFormError(problem);
     setFormError("");
-    const saved = await onSubmit({
-      text: tidy(text),
-      options: kept.map(({ o }) => o),
-      correctIndex: kept.findIndex(({ i }) => i === correctIndex),
-    });
-    if (saved && !initial) {
-      setText("");
-      setOptions(["", "", "", ""]);
-      setCorrectIndex(0);
+    if (!(await onSubmit(toQuestion(fields)))) return;
+    // Saved: the draft has done its job. (An edit's form closes right away.)
+    writeDraft(draftOf, box, null, slot);
+    if (!initial) reset();
+  }
+
+  async function cancel() {
+    if (changed) {
+      const ok = await confirm({
+        title: "Discard your changes?",
+        message: "The question stays as it was saved.",
+        confirmLabel: "Discard changes",
+        danger: true,
+      });
+      if (!ok) return;
+      writeDraft(draftOf, box, null, slot);
     }
+    onCancel?.();
   }
 
   return (
     <form onSubmit={submit} className="mt-3 rounded-btn border border-dashed border-pewter/50 bg-white p-4">
+      {dialog}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="font-display text-sm font-bold tracking-tight">{title}</p>
         <QuestionToolbar field={target} />
       </div>
+      {restoredAt !== null && (
+        <DraftNotice
+          savedAt={restoredAt}
+          what={initial ? "these changes" : "this question"}
+          plural={Boolean(initial)}
+          saving={initial ? "saved" : "added"}
+          onDiscard={reset}
+        />
+      )}
       <div className="mt-3">
         <RichField
           controlsRef={questionBox}
@@ -1009,7 +1141,7 @@ function QuestionForm({
           {busy ? "Saving…" : submitLabel}
         </button>
         {onCancel && (
-          <button type="button" onClick={onCancel} className="cursor-pointer rounded-btn px-4 py-2.5 text-sm font-semibold text-graphite hover:text-ink">
+          <button type="button" onClick={cancel} className="cursor-pointer rounded-btn px-4 py-2.5 text-sm font-semibold text-graphite hover:text-ink">
             Cancel
           </button>
         )}
@@ -1018,22 +1150,155 @@ function QuestionForm({
   );
 }
 
+/** Asks before throwing away something typed; resolves to whether to go ahead. */
+function useConfirmDiscard() {
+  const { confirm, dialog } = useConfirm();
+  const ask = (what: string) =>
+    confirm({
+      title: `Discard ${what}?`,
+      message: "What you typed is removed from this computer. This can't be undone.",
+      confirmLabel: "Discard",
+      danger: true,
+    });
+  return { ask, dialog };
+}
+
+/**
+ * "Not added yet: you typed 3 questions on 21 Nov 2026, 9:14 am…", above a
+ * box brought back from an earlier visit, with a way to throw it away.
+ */
+function DraftNotice({
+  savedAt,
+  what,
+  plural,
+  saving,
+  onDiscard,
+}: {
+  savedAt: number;
+  /** "3 questions", "this question", "these changes". */
+  what: string;
+  /** Whether `what` is more than one thing, for "them" rather than "it". */
+  plural: boolean;
+  /** What pressing the box's button does to it. */
+  saving: "added" | "saved";
+  onDiscard: () => void;
+}) {
+  const { ask, dialog } = useConfirmDiscard();
+  const [it, itWas] = plural ? ["them", "they were"] : ["it", "it was"];
+  return (
+    <div data-tour="question-draft" role="status" className="mt-3 rounded-btn bg-brand-gold/20 px-4 py-3 text-sm text-ink">
+      {dialog}
+      Not {saving} yet: you typed {what} on {draftTime(savedAt)}, and {itWas} kept on this computer. Check {it}, then
+      press {saving === "added" ? "Add" : "Save changes"}, or{" "}
+      <button
+        type="button"
+        onClick={async () => (await ask(what)) && onDiscard()}
+        className="cursor-pointer font-semibold text-brand-red underline"
+      >
+        discard {it}
+      </button>
+      .
+    </div>
+  );
+}
+
+/**
+ * An unsaved edit whose question was changed or removed elsewhere since, so
+ * it can't be put back in that question's form: add it as a new question, or
+ * discard it.
+ */
+function OrphanedEdit({
+  draft,
+  busy,
+  onAdd,
+  onDiscard,
+}: {
+  draft: SavedDraft<"edit">;
+  busy: boolean;
+  onAdd: (q: QuestionDraft) => Promise<void>;
+  onDiscard: () => void;
+}) {
+  const { ask, dialog } = useConfirmDiscard();
+  const complete = questionProblem(draft.value) === null;
+  const was = plainText(draft.value.original.text);
+  return (
+    <div data-tour="question-draft" role="status" className="mt-3 rounded-btn bg-brand-gold/20 px-4 py-3 text-sm text-ink">
+      {dialog}
+      <p>
+        Not saved: on {draftTime(draft.savedAt)} you changed the question &ldquo;{was.length > 80 ? `${was.slice(0, 80)}…` : was}&rdquo;,
+        but it has since been changed or removed elsewhere, so your version can&rsquo;t replace it. Your version is
+        kept on this computer.
+      </p>
+      <p className="mt-1 font-semibold">
+        <RichText text={draft.value.text} />
+      </p>
+      <div className="mt-2 flex flex-wrap gap-3">
+        {complete ? (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => onAdd(toQuestion(draft.value))}
+            className="cursor-pointer font-semibold text-brand-navy underline disabled:opacity-50"
+          >
+            Add your version as a new question
+          </button>
+        ) : (
+          <span className="text-graphite">It isn&rsquo;t complete, so it can&rsquo;t be added as it is.</span>
+        )}
+        <button
+          type="button"
+          onClick={async () => (await ask("your version")) && onDiscard()}
+          className="cursor-pointer font-semibold text-brand-red underline"
+        >
+          Discard it
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function QuestionEditor({
   exam,
+  draftOf,
   busy,
   access,
   onSave,
   onRequestRemoval,
 }: {
   exam: Exam;
+  draftOf: DraftOf;
   busy: boolean;
   access: ExamAccess;
   onSave: (questions: Exam["questions"]) => Promise<boolean>;
   onRequestRemoval: (questionIndex: number) => void;
 }) {
-  const [mode, setMode] = useState<"paste" | "one">("paste");
-  const [editing, setEditing] = useState<number | null>(null);
+  // Opens on the box with questions not added yet, if only the "one" box has some.
+  const [mode, setMode] = useState<"paste" | "one">(() =>
+    !readDraft(draftOf, "paste") && readDraft(draftOf, "one") ? "one" : "paste"
+  );
+  // The other box's draft, named on its button so it isn't forgotten.
+  const otherHasDraft = readDraft(draftOf, mode === "paste" ? "one" : "paste") !== null;
+
+  // Unsaved edits: each belongs to the question it was made from, found by
+  // how that question read. One that matches none was overtaken elsewhere.
+  const [, draftsChanged] = useReducer((n: number) => n + 1, 0);
+  const indexOfEdit = (d: SavedDraft<"edit">) =>
+    exam.questions.findIndex(
+      (q) => q.text === d.value.original.text && JSON.stringify(q.options) === JSON.stringify(d.value.original.options)
+    );
+  const editDrafts = readEditDrafts(draftOf).map((d) => ({ d, index: indexOfEdit(d) }));
+  const editedIndexes = new Set(editDrafts.map(({ index }) => index).filter((i) => i >= 0));
+  const orphans = editDrafts.filter(({ index }) => index < 0).map(({ d }) => d);
+  // Opens with the first unsaved edit, so it is seen.
+  const [editing, setEditing] = useState<number | null>(() => editDrafts.find(({ index }) => index >= 0)?.index ?? null);
   const { confirm, dialog } = useConfirm();
+
+  async function addOrphan(d: SavedDraft<"edit">, q: QuestionDraft) {
+    if (await onSave([...exam.questions, { ...q, id: "", position: exam.questions.length }])) {
+      forgetDraft(d.key);
+      draftsChanged();
+    }
+  }
 
   async function removeQuestion(qi: number) {
     const ok = await confirm({
@@ -1071,6 +1336,7 @@ function QuestionEditor({
                   title={`Edit question ${qi + 1}`}
                   submitLabel="Save changes"
                   busy={busy}
+                  draftOf={draftOf}
                   onSubmit={(draft) => saveEdit(qi, draft)}
                   onCancel={() => setEditing(null)}
                 />
@@ -1081,6 +1347,11 @@ function QuestionEditor({
                   <p className="whitespace-pre-line text-sm font-semibold">
                     <span className="mr-2 text-pewter">{qi + 1}.</span>
                     <RichText text={q.text} />
+                    {editedIndexes.has(qi) && (
+                      <span data-tour="question-edit-draft" className="mt-1 block text-[13px] font-semibold text-brand-red">
+                        You have changes to this question not saved yet. Press Edit to see them.
+                      </span>
+                    )}
                   </p>
                   {access !== "view" && (
                     <div className="flex shrink-0 gap-3">
@@ -1125,6 +1396,18 @@ function QuestionEditor({
         </p>
       ) : (
         <>
+          {orphans.map((d) => (
+            <OrphanedEdit
+              key={d.key}
+              draft={d}
+              busy={busy}
+              onAdd={(q) => addOrphan(d, q)}
+              onDiscard={() => {
+                forgetDraft(d.key);
+                draftsChanged();
+              }}
+            />
+          ))}
           <div className="mt-5 flex gap-2">
             {(
               [
@@ -1141,18 +1424,20 @@ function QuestionEditor({
                 }`}
               >
                 {label}
+                {key !== mode && otherHasDraft && " (not added yet)"}
               </button>
             ))}
           </div>
 
           {mode === "paste" ? (
-            <PasteQuestions exam={exam} busy={busy} onSave={onSave} />
+            <PasteQuestions exam={exam} draftOf={draftOf} busy={busy} onSave={onSave} />
           ) : (
             <QuestionForm
               name={`${exam.id}-new`}
               title={`Add question ${exam.questions.length + 1}`}
               submitLabel="Add question"
               busy={busy}
+              draftOf={draftOf}
               onSubmit={(q) => onSave([...exam.questions, { ...q, id: "", position: exam.questions.length }])}
             />
           )}
@@ -1178,14 +1463,25 @@ Answer: B
  */
 function PasteQuestions({
   exam,
+  draftOf,
   busy,
   onSave,
 }: {
   exam: Exam;
+  draftOf: DraftOf;
   busy: boolean;
   onSave: (questions: Exam["questions"]) => Promise<boolean>;
 }) {
-  const [text, setText] = useState("");
+  // What this teacher pasted here earlier and hasn't added yet, kept until it is.
+  const saved = useSavedDraft(draftOf, "paste");
+  const [text, setText] = useState(saved?.value ?? "");
+  const { restoredAt, forgetRestored } = useKeepDraft(draftOf, "paste", "", saved, hasWords(text) ? text : null, (v) =>
+    setText(v ?? "")
+  );
+  const clear = () => {
+    setText("");
+    forgetRestored();
+  };
   const box = useRef<RichFieldControls | null>(null);
   const parsed = useMemo(() => parseQuestions(text), [text]);
   // Pasted questions go after the ones already there, so number them on from those.
@@ -1203,7 +1499,7 @@ function PasteQuestions({
         position: exam.questions.length + i,
       })),
     ]);
-    if (saved) setText("");
+    if (saved) clear();
   }
 
   return (
@@ -1218,6 +1514,15 @@ function PasteQuestions({
         underline, italic, superscript (x²) and subscript (H₂O) pasted from Word are kept, and show here as students
         will see them. Use the buttons above to add them, or Symbols for √, π, → and more.
       </p>
+      {restoredAt !== null && (
+        <DraftNotice
+          savedAt={restoredAt}
+          what={parsed.length === 0 ? "this text" : parsed.length === 1 ? "1 question" : `${parsed.length} questions`}
+          plural={parsed.length > 1}
+          saving="added"
+          onDiscard={clear}
+        />
+      )}
       <div className="mt-3">
         <RichField controlsRef={box} value={text} onChange={setText} label="Questions to add" placeholder={PASTE_EXAMPLE} multiline minHeight="16rem" />
       </div>

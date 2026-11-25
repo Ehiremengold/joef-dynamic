@@ -1,6 +1,7 @@
 import "server-only";
 import { serviceClient } from "@/lib/supabase/server";
-import { deleteExam, getExam, replaceQuestions } from "./exams";
+import { ConflictError } from "@/lib/api";
+import { deleteExam, getExam, saveQuestions } from "./exams";
 
 type Row = Record<string, unknown>;
 
@@ -74,6 +75,34 @@ export async function createDeletionRequest(input: {
 }
 
 /**
+ * Take the requested question out of the exam: "approved", or "obsolete" when
+ * it is no longer there as it was asked about. Each try is checked against
+ * the questions just read, so a teacher's save in between isn't undone; when
+ * one lands in between, the exam is read again and it tries again.
+ */
+async function removeRequestedQuestion(examId: string, text: string, options: unknown): Promise<"approved" | "obsolete"> {
+  const wanted = JSON.stringify(options);
+  for (let attempt = 1; ; attempt++) {
+    const exam = await getExam(examId);
+    const index = exam ? exam.questions.findIndex((q) => q.text === text && JSON.stringify(q.options) === wanted) : -1;
+    if (!exam || index < 0) return "obsolete";
+    try {
+      await saveQuestions(
+        exam.id,
+        exam.questions.filter((_, i) => i !== index),
+        exam.questions.map((q) => q.id)
+      );
+      return "approved";
+    } catch (e) {
+      if (!(e instanceof ConflictError)) throw e;
+      if (attempt === 3) {
+        throw new Error("The test's questions kept changing while this was being approved. Nothing was removed: try again in a moment.");
+      }
+    }
+  }
+}
+
+/**
  * A super admin's decision. Approving carries out the deletion. If the exam
  * or question is already gone, or the question has since been changed, the
  * request is closed as obsolete and nothing is deleted.
@@ -92,14 +121,7 @@ export async function decideDeletionRequest(
     const exam = r.exam_id ? await getExam(r.exam_id as string) : null;
     if (!exam) status = "obsolete";
     else if (!r.question_text) await deleteExam(exam.id);
-    else {
-      const options = JSON.stringify(r.question_options);
-      const index = exam.questions.findIndex(
-        (q) => q.text === r.question_text && JSON.stringify(q.options) === options
-      );
-      if (index < 0) status = "obsolete";
-      else await replaceQuestions(exam.id, exam.questions.filter((_, i) => i !== index));
-    }
+    else status = await removeRequestedQuestion(exam.id, r.question_text as string, r.question_options);
   }
 
   const { error } = await supa

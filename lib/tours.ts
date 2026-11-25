@@ -268,6 +268,11 @@ function examsTour(role: StaffRole): TourStep[] {
       text: "Each exam you create gets a card with: a switch that shows whether students can see it (Open, Scheduled or Hidden), Date & time, Questions (paste a whole set from Word or add one at a time), Sittings (who is taking it now, extra time, retakes), Download results and Delete. Create one, then press “How this tab works” again to see each button.",
     },
     {
+      target: "exams-drafts",
+      title: "Questions not added yet",
+      text: "Tests where you typed questions but didn't add them. Press a test's name to find it, then open its Questions: what you typed is there, ready to check and add, or to discard.",
+    },
+    {
       target: "exams-filter",
       title: "Find an exam",
       text: "Type part of a title to search, or narrow the list by class (or Common entrance) and by status: open to students now, scheduled for later, hidden, or past its closing time. The list shows 20 exams a page.",
@@ -295,7 +300,22 @@ function examsTour(role: StaffRole): TourStep[] {
     {
       target: "exam-questions",
       title: "Questions",
-      text: "Opens the question list. Choose “Paste questions” to paste a whole set from Word at once: end every question with an “Answer: B” line, check the preview, then press Add. Or choose “Add one question” and tick the correct option. The boxes show text as students will see it, and anything pasted from Word keeps its styling. The correct answer shows in green, and each question has Edit and Remove.",
+      text: "Opens the question list. Choose “Paste questions” to paste a whole set from Word at once: end every question with an “Answer: B” line, check the preview, then press Add. Or choose “Add one question” and tick the correct option. The boxes show text as students will see it, and anything pasted from Word keeps its styling. The correct answer shows in green, and each question has Edit and Remove. Questions you type but haven't added, and changes you haven't saved, are kept on this computer, so they come back if the page reloads or your sign-in ends; they're removed when you sign out. If the test was changed in another tab, on another device or by someone else since you opened it, your save is refused rather than overwriting their questions: what you typed stays, so you can add it again.",
+    },
+    {
+      target: "exam-draft",
+      title: "Questions not added yet",
+      text: "You typed questions for this test (or changed one) and haven't added or saved them yet. Press here to open them.",
+    },
+    {
+      target: "question-draft",
+      title: "Brought back for you",
+      text: "What you typed on an earlier visit, kept on this computer. Check it, then press Add (or Save changes), or discard it. If the question you were changing has since been changed by someone else, you can add your version as a new question instead.",
+    },
+    {
+      target: "question-edit-draft",
+      title: "Changes not saved",
+      text: "You started changing this question and didn't save. Press Edit to see your changes and save or cancel them.",
     },
     {
       target: "question-toolbar",

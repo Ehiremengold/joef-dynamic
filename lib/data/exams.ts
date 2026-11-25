@@ -1,5 +1,6 @@
 import "server-only";
 import { serviceClient } from "@/lib/supabase/server";
+import { ConflictError } from "@/lib/api";
 import { examStatus } from "@/lib/examSchedule";
 import type {
   ClassName,
@@ -179,27 +180,71 @@ export async function updateExamMeta(
   }
 }
 
-/** Replace all questions for an exam in one transaction-like swap. */
-export async function replaceQuestions(
+/**
+ * Replace all of an exam's questions in one transaction (save_exam_questions,
+ * migration 0022). `expectedIds` are the question ids the person saw, in
+ * order: if the exam's questions have changed since (saved from another tab,
+ * device or person), nothing is written and ConflictError says so. Null skips
+ * the check, for a screen loaded before the check existed.
+ */
+export async function saveQuestions(
   examId: string,
-  questions: { text: string; options: string[]; correctIndex: number }[]
+  questions: { text: string; options: string[]; correctIndex: number }[],
+  expectedIds: string[] | null
 ): Promise<void> {
+  const { data, error } = await serviceClient().rpc("save_exam_questions", {
+    p_exam_id: examId,
+    p_expected: expectedIds,
+    p_questions: questions,
+  });
+  if (error) {
+    // PostgREST's "no such function": migration 0022 hasn't been run yet.
+    if ((error as { code?: string }).code === "PGRST202") return saveQuestionsBeforeMigration(examId, questions, expectedIds);
+    throw new Error(error.message);
+  }
+  const result = data as { saved?: number; conflict?: boolean; count?: number };
+  if (result.conflict) throw questionsChanged(result.count ?? 0);
+}
+
+/**
+ * Until migration 0022 is run, save as before it: the same check, then
+ * delete and insert in two steps (not one transaction). Keeps question
+ * saving working if the code goes live before the migration.
+ */
+async function saveQuestionsBeforeMigration(
+  examId: string,
+  questions: { text: string; options: string[]; correctIndex: number }[],
+  expectedIds: string[] | null
+): Promise<void> {
+  console.warn("save_exam_questions is missing: run supabase/migrations/0022_save_exam_questions.sql");
   const supa = serviceClient();
-  const { error: delErr } = await supa
+  const { data: rows, error: readErr } = await supa
     .from("questions")
-    .delete()
-    .eq("exam_id", examId);
+    .select("id")
+    .eq("exam_id", examId)
+    .order("position", { ascending: true })
+    .order("id");
+  if (readErr) throw new Error(readErr.message);
+  const current = (rows ?? []).map((r) => r.id as string);
+  if (expectedIds && (current.length !== expectedIds.length || current.some((id, i) => id !== expectedIds[i]))) {
+    throw questionsChanged(current.length);
+  }
+  const { error: delErr } = await supa.from("questions").delete().eq("exam_id", examId);
   if (delErr) throw new Error(delErr.message);
   if (questions.length === 0) return;
-  const rows = questions.map((q, i) => ({
-    exam_id: examId,
-    text: q.text,
-    options: q.options,
-    correct_index: q.correctIndex,
-    position: i,
-  }));
-  const { error } = await supa.from("questions").insert(rows);
+  const { error } = await supa.from("questions").insert(
+    questions.map((q, i) => ({ exam_id: examId, text: q.text, options: q.options, correct_index: q.correctIndex, position: i }))
+  );
   if (error) throw new Error(error.message);
+}
+
+/** A save from a screen whose questions are out of date: told apart from other errors (409). */
+export function questionsChanged(count: number): ConflictError {
+  return new ConflictError(
+    `This test was changed somewhere else (another tab, device or person) since you opened it, so this wasn't saved. ` +
+      `It now has ${count} question${count === 1 ? "" : "s"}: check them below. Anything you typed is still here, so you can add it again.`,
+    { questionsChanged: true }
+  );
 }
 
 export async function deleteExam(id: string): Promise<void> {
