@@ -440,7 +440,7 @@ const CLASSES_TOUR: TourStep[] = [
   {
     target: "classes-subjects",
     title: "Subject catalog",
-    text: "Every subject the school teaches. Senior subjects can be tagged Science, Art or Commercial. Add a subject here first, then give it to the classes that take it.",
+    text: "Every subject the school teaches. Senior subjects can be tagged Science, Art or Commercial. Add a subject here first, then give it to the classes that take it. The × here takes a subject off every class, so you're shown which classes (and any pupils marked as not taking it) and asked first. A subject with term marks can't be removed: take it off the classes that no longer offer it instead.",
   },
   {
     target: "classes-add",

@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { useApi, useInvalidate } from "@/lib/client/api";
+import { ApiError, getJson, sendJson, useApi, useInvalidate } from "@/lib/client/api";
+import { subjectHasMarksMessage, type SubjectUsage } from "@/lib/subjectRemoval";
 import { CLASSES, type Campus, type Class, type ClassSubject, type Staff, type Subject } from "@/lib/types";
 import { useConfirm } from "./useConfirm";
 
@@ -21,9 +22,10 @@ export default function ClassesPanel({ onUnauthorized }: { onUnauthorized: () =>
   const [error, setError] = useState("");
 
   // Every list on this tab can change what another shows (a removed campus
-  // takes its classes), so a change refreshes them all.
+  // takes its classes, a removed subject comes off every class's subject
+  // list), so a change refreshes them all, including each class's own lists.
   const load = useCallback(() => {
-    invalidate("/api/campuses", "/api/classes", "/api/subjects");
+    invalidate("/api/campuses", "/api/classes", "/api/classes/*", "/api/subjects");
   }, [invalidate]);
 
   if ([campusesQ, classesQ, subjectsQ, staffQ].some((q) => q.isPending)) {
@@ -162,11 +164,15 @@ function SubjectsSection({
   const [name, setName] = useState("");
   const [department, setDepartment] = useState("");
   const [busy, setBusy] = useState(false);
+  // Shown beside the catalog rather than at the top of the tab, where it would be off screen.
+  const [problem, setProblem] = useState("");
+  const [removing, setRemoving] = useState(false);
 
   async function add(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError("");
+    setProblem("");
     try {
       const res = await fetch("/api/subjects", {
         method: "POST",
@@ -187,16 +193,51 @@ function SubjectsSection({
   }
 
   async function remove(s: Subject) {
-    const ok = await confirm({
-      title: `Remove ${s.name}?`,
-      message: "It comes off the subject catalog and every class that offers it.",
-      confirmLabel: "Remove subject",
-      danger: true,
-    });
-    if (!ok) return;
-    const res = await fetch(`/api/subjects/${s.id}`, { method: "DELETE" });
-    if (res.status === 401 || res.status === 403) return onUnauthorized();
-    if (res.ok) onChanged();
+    // One at a time: a second press while the check or the dialog is open does nothing.
+    if (removing) return;
+    setRemoving(true);
+    setError("");
+    setProblem("");
+    const denied = (e: unknown) => e instanceof ApiError && (e.status === 401 || e.status === 403);
+    // Someone else removed it since the list loaded: show the list as it is now.
+    const gone = (e: unknown) => {
+      if (!(e instanceof ApiError && e.status === 404)) return false;
+      onChanged();
+      setProblem(`${s.name} has already been removed.`);
+      return true;
+    };
+    try {
+      // Which classes lose it, so the admin sees exactly what they're removing.
+      // If that can't be read, the confirmation falls back to the general warning.
+      let usage: SubjectUsage | null = null;
+      try {
+        usage = await getJson<SubjectUsage>(`/api/subjects/${s.id}/usage`);
+      } catch (e) {
+        if (denied(e)) return onUnauthorized();
+        if (gone(e)) return;
+      }
+      if (usage?.hasMarks) {
+        setProblem(subjectHasMarksMessage(s.name));
+        return;
+      }
+      const ok = await confirm({
+        title: `Remove ${s.name}?`,
+        message: usage ? <RemovalSummary usage={usage} /> : "It comes off the subject catalog and every class that offers it.",
+        confirmLabel: "Remove subject",
+        danger: true,
+      });
+      if (!ok) return;
+      try {
+        await sendJson(`/api/subjects/${s.id}`, "DELETE");
+        onChanged();
+      } catch (e) {
+        if (denied(e)) return onUnauthorized();
+        if (gone(e)) return;
+        setProblem(e instanceof Error ? e.message : `Could not remove ${s.name}`);
+      }
+    } finally {
+      setRemoving(false);
+    }
   }
 
   return (
@@ -218,7 +259,8 @@ function SubjectsSection({
             <button
               type="button"
               onClick={() => remove(s)}
-              className="cursor-pointer text-pewter hover:text-brand-red"
+              disabled={removing}
+              className="cursor-pointer text-pewter hover:text-brand-red disabled:cursor-wait disabled:opacity-50"
               aria-label={`Remove ${s.name}`}
             >
               ×
@@ -227,6 +269,18 @@ function SubjectsSection({
         ))}
         {subjects.length === 0 && <p className="text-sm text-graphite">No subjects yet.</p>}
       </div>
+      {problem && (
+        <p className="mt-3 max-w-[640px] text-sm font-semibold text-brand-red" role="alert">
+          {problem}{" "}
+          <button
+            type="button"
+            onClick={() => setProblem("")}
+            className="cursor-pointer font-semibold text-graphite underline hover:text-ink"
+          >
+            Dismiss
+          </button>
+        </p>
+      )}
       <form onSubmit={add} className="mt-3 flex max-w-lg flex-wrap gap-2">
         <input
           type="text"
@@ -253,6 +307,35 @@ function SubjectsSection({
         </button>
       </form>
     </section>
+  );
+}
+
+/** The body of "Remove <subject>?": the classes that lose it, and any pupils' notes that go with it. */
+function RemovalSummary({ usage }: { usage: SubjectUsage }) {
+  const n = usage.classes.length;
+  const pupils = usage.exemptions;
+  return (
+    <>
+      <p>
+        {n === 0
+          ? "No class offers it yet. It comes off the subject catalog."
+          : `It comes off the subject catalog and the ${n === 1 ? "class that offers" : `${n} classes that offer`} it:`}
+      </p>
+      {n > 0 && (
+        <ul className="mt-2 flex max-h-48 flex-wrap gap-1.5 overflow-y-auto">
+          {usage.classes.map((c) => (
+            <li key={c} className="whitespace-nowrap rounded-btn bg-mist px-2 py-0.5 text-[13px] font-semibold text-ink">
+              {c}
+            </li>
+          ))}
+        </ul>
+      )}
+      {pupils > 0 && (
+        <p className="mt-2">
+          {pupils === 1 ? "1 pupil is" : `${pupils} pupils are`} marked as not taking it. That note is removed too.
+        </p>
+      )}
+    </>
   );
 }
 

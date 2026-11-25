@@ -38,7 +38,9 @@ export async function DELETE(_req: Request, { params }: Params) {
   try {
     await requireAdmin();
     const { id } = await params;
-    await deleteSubject(id);
+    if (!(await deleteSubject(id))) {
+      return NextResponse.json({ error: "Subject not found" }, { status: 404 });
+    }
     return NextResponse.json({ ok: true });
   } catch (e) {
     return errorResponse(e);
