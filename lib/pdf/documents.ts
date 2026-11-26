@@ -2,7 +2,7 @@ import "server-only";
 import { LEVEL_NAMES, type ReportSheet, type Student } from "@/lib/types";
 import { BRAND } from "./brand";
 import { contentBottom, createDocument, drawFooter, drawLetterhead, type Box } from "./page";
-import { drawReportSheet, REPORT_MARGIN } from "./reportSheet";
+import { drawReportSheet, drawSessionReport, REPORT_MARGIN } from "./reportSheet";
 
 // Usable width on A4 with 50pt margins each side (595.28 - 50 - 50).
 const BOX: Box = { left: 50, width: 495 };
@@ -248,6 +248,22 @@ export async function buildTranscriptPdf(input: TranscriptInput): Promise<Buffer
   doc.end();
   return done;
 }
+
+/** A PDF of report sheets: `draw` fills a document made with the report sheet margin. */
+async function reportPdf(draw: (doc: PDFKit.PDFDocument) => void): Promise<Buffer> {
+  const { doc, done } = createDocument(REPORT_MARGIN);
+  draw(doc);
+  doc.end();
+  return done;
+}
+
+/** One term's report sheet on its own, to print or save. */
+export const buildReportSheetPdf = (student: Pick<Student, "fullName" | "gender">, sheet: ReportSheet) =>
+  reportPdf((doc) => drawReportSheet(doc, student, sheet));
+
+/** A student's report for a whole session, from that session's term sheets (see drawSessionReport). */
+export const buildSessionReportPdf = (student: Pick<Student, "fullName" | "gender">, sheets: ReportSheet[]) =>
+  reportPdf((doc) => drawSessionReport(doc, student, sheets));
 
 /* ------------------------------------------------------------------ */
 /* 3. Class result sheet (all takers of one exam)                      */

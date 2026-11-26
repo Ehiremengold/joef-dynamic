@@ -637,7 +637,7 @@ const REPORTS_TOUR: TourStep[] = [
   {
     unless: "rc-ratings",
     title: "Writing a report",
-    text: "Once you pick a student, rate each effective area (such as Punctuality and Neatness) as Excellent, Very Good or Good, write a short comment, and press Save report. The comment prints with your name on the report sheet.",
+    text: "Once you pick a student, rate each effective area (such as Punctuality and Neatness) as Excellent, Very Good or Good, write a short comment, and press Save report. The comment prints with your name on the report sheet. Above the report you can print or download the student's report sheet for the term, and their session report.",
   },
   {
     target: "rc-ratings",
@@ -652,7 +652,17 @@ const REPORTS_TOUR: TourStep[] = [
   {
     target: "rc-save",
     title: "Save report",
-    text: "Saves this student's report. Then pick the next student from the list.",
+    text: "Saves this student's report. Then pick the next student from the list. The button stays at the bottom of the screen while you scroll.",
+  },
+  {
+    target: "rc-print",
+    title: "Print or download the report sheet",
+    text: "This student's report sheet for the term chosen above: their marks, grades, attendance, your ratings and comment, and the principal's comment. Print opens it in a new tab, where you can print it or save it; Download saves the PDF. It shows what's saved, so press Save report first. If no marks have been entered for the term yet, it says so.",
+  },
+  {
+    target: "rc-session",
+    title: "Session report",
+    text: "The whole session on one sheet: each subject's 1st, 2nd and 3rd term marks, the session total, average and grade, the class average, the year's attendance, and the latest term's comments (the principal's exactly as on that term's own sheet). Terms without marks yet show a dash, so it can be printed before the Third Term is done.",
   },
 ];
 

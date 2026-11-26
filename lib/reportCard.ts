@@ -35,6 +35,14 @@ export type TermReport = {
   signedBy: string | null;
 };
 
+/** Whether two versions of a report say the same: the same ratings and comment (spaces round it aside). */
+export function sameReport(a: Pick<TermReport, "ratings" | "teacherComment">, b: Pick<TermReport, "ratings" | "teacherComment">): boolean {
+  return (
+    a.teacherComment.trim() === b.teacherComment.trim() &&
+    TRAITS.every((trait) => (a.ratings[trait] ?? null) === (b.ratings[trait] ?? null))
+  );
+}
+
 /** A student on the Report cards screen, with what has been written for them so far. */
 export type TermReportRow = TermReport & { studentId: string; fullName: string; admissionNumber: string };
 

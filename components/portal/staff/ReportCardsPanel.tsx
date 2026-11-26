@@ -1,10 +1,10 @@
 "use client";
 
 import { classLabel } from "@/lib/classes";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError, apiKey, EDITABLE, sendJson, useApi } from "@/lib/client/api";
-import { MAX_COMMENT_LENGTH, RATINGS, TRAITS, type Rating, type Ratings, type TermReportRow } from "@/lib/reportCard";
+import { MAX_COMMENT_LENGTH, RATINGS, sameReport, TRAITS, type Rating, type Ratings, type TermReportRow } from "@/lib/reportCard";
 import { isAdmin } from "@/lib/roles";
 import type { Class, SignedInStaff, Term } from "@/lib/types";
 
@@ -46,6 +46,18 @@ export default function ReportCardsPanel({ me, onUnauthorized }: { me: SignedInS
   const cls = classes.find((c) => c.id === classId);
   const canEdit = cls?.classTeacherId === me.id;
   const student = rows.find((r) => r.studentId === selected);
+  const term = terms.find((t) => t.id === termId);
+  // The printed sheet shows what's saved, so say when the screen has more.
+  const unsaved = !!student && !!draft && !sameReport(draft, student);
+
+  // On a phone the report opens below the whole list: bring it into view.
+  const reportBox = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const box = reportBox.current;
+    if (!selected || !box) return;
+    const top = box.getBoundingClientRect().top;
+    if (top < 0 || top > window.innerHeight * 0.6) box.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [selected]);
 
   function open(row: TermReportRow) {
     setSelected(row.studentId);
@@ -130,7 +142,9 @@ export default function ReportCardsPanel({ me, onUnauthorized }: { me: SignedInS
       {!canEdit && (
         <p className="rounded-card border border-smoke bg-white px-4 py-3 text-[13px] text-graphite">
           Read only. Only this class&rsquo;s class teacher
-          {cls?.classTeacherName ? ` (${cls.classTeacherName})` : ""} can write its reports.
+          {cls?.classTeacherName ? ` (${cls.classTeacherName})` : ""} can write its reports
+          {isAdmin(me.role) ? ". An admin can change the class teacher under the Classes tab" : ""}. You can still print
+          or download each student&rsquo;s report sheet.
         </p>
       )}
       {(error || reportsQ.error) && (
@@ -163,9 +177,29 @@ export default function ReportCardsPanel({ me, onUnauthorized }: { me: SignedInS
           {!student || !draft ? (
             <p className="text-sm text-graphite">Pick a student to {canEdit ? "write" : "read"} their report.</p>
           ) : (
-            <div className="rounded-card border border-smoke bg-white p-6">
+            <div ref={reportBox} className="scroll-mt-4 rounded-card border border-smoke bg-white p-6">
               <h3 className="font-display text-lg font-bold tracking-tight">{student.fullName}</h3>
               <p className="text-[13px] text-pewter">{student.admissionNumber}</p>
+              {/* At the top, so they're seen as soon as a student is picked. */}
+              {term && (
+                <div className="mt-4 space-y-2 rounded-btn bg-mist p-3">
+                  <DocumentLinks
+                    tour="rc-print"
+                    label={`Report sheet (${term.name})`}
+                    path={`/api/students/${student.studentId}/report-sheet`}
+                    params={{ termId: term.id }}
+                  />
+                  <DocumentLinks
+                    tour="rc-session"
+                    label={`Session report (${term.sessionName ?? "this session"})`}
+                    path={`/api/students/${student.studentId}/session-report`}
+                    params={{ sessionId: term.sessionId }}
+                  />
+                  {unsaved && (
+                    <p className="text-[13px] text-graphite">These show what&rsquo;s saved: press Save report first.</p>
+                  )}
+                </div>
+              )}
 
               <h4 className="mt-5 text-sm font-semibold">Effective areas</h4>
               <div data-tour="rc-ratings" className="mt-2 grid gap-x-6 gap-y-2 sm:grid-cols-2">
@@ -211,20 +245,47 @@ export default function ReportCardsPanel({ me, onUnauthorized }: { me: SignedInS
 
               {notice && <p className="mt-2 text-sm font-semibold text-brand-green">{notice}</p>}
               {canEdit && (
-                <button
-                  type="button"
-                  data-tour="rc-save"
-                  onClick={save}
-                  disabled={saving}
-                  className="mt-3 cursor-pointer rounded-btn bg-brand-red px-6 py-2.5 text-sm font-semibold text-white hover:bg-brand-red-dark disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {saving ? "Saving…" : "Save report"}
-                </button>
+                // Kept on screen while scrolling, so Save is never out of sight on a phone.
+                <div className="sticky bottom-0 -mx-6 -mb-6 mt-3 flex flex-wrap items-center gap-3 rounded-b-card border-t border-smoke bg-white px-6 py-3">
+                  <button
+                    type="button"
+                    data-tour="rc-save"
+                    onClick={save}
+                    disabled={saving}
+                    className="cursor-pointer rounded-btn bg-brand-red px-6 py-2.5 text-sm font-semibold text-white hover:bg-brand-red-dark disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {saving ? "Saving…" : "Save report"}
+                  </button>
+                  {unsaved && <span className="text-[13px] text-graphite">Not saved yet</span>}
+                </div>
               )}
             </div>
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * "Report sheet (First Term): Print · Download". Print opens the PDF in the
+ * browser's own viewer, to print or save; Download saves it. Both open a new
+ * tab, so a "nothing to print yet" page never replaces this one (and anything
+ * typed and not saved on it).
+ */
+function DocumentLinks({ tour, label, path, params }: { tour: string; label: string; path: string; params: Record<string, string> }) {
+  const url = (extra: Record<string, string> = {}) => `${path}?${new URLSearchParams({ ...params, ...extra })}`;
+  const link =
+    "cursor-pointer rounded-btn border border-brand-navy px-3 py-1.5 text-[13px] font-semibold text-brand-navy transition-colors duration-200 hover:bg-brand-navy hover:text-white";
+  return (
+    <div data-tour={tour} className="flex flex-wrap items-center gap-2">
+      <span className="mr-1 text-sm font-semibold">{label}</span>
+      <a href={url({ view: "1" })} target="_blank" rel="noopener noreferrer" className={link}>
+        Print
+      </a>
+      <a href={url()} target="_blank" rel="noopener noreferrer" className={link}>
+        Download
+      </a>
     </div>
   );
 }

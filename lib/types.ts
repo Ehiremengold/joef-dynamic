@@ -213,11 +213,14 @@ export type AcademicSession = {
   createdAt: string;
 };
 
+/** The terms of a session, in order. */
+export const TERMS_IN_ORDER = ["First Term", "Second Term", "Third Term"] as const;
+
 export type Term = {
   id: string;
   sessionId: string;
   sessionName?: string;
-  name: "First Term" | "Second Term" | "Third Term";
+  name: (typeof TERMS_IN_ORDER)[number];
   isCurrent: boolean;
   /** Printed on the term's report sheets, e.g. "2026-09-14". */
   nextTermBegins: string | null;
@@ -291,6 +294,8 @@ export type ScoreRow = {
 
 /** One student's results for one term, as printed on their report sheet. */
 export type ReportSheet = {
+  termId: string;
+  sessionId: string;
   sessionName: string;
   termName: Term["name"];
   /** The class they sat in that term, e.g. "Basic 1 (Ikoyi)". */

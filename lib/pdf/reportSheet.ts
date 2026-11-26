@@ -1,7 +1,7 @@
 import "server-only";
 import { GRADE_KEY, gradeFor } from "@/lib/grades";
 import { principalComment, TRAITS, type Rating, type Ratings } from "@/lib/reportCard";
-import type { ReportSheet, Student } from "@/lib/types";
+import { TERMS_IN_ORDER, type ReportSheet, type Student, type Term } from "@/lib/types";
 import { BRAND } from "./brand";
 import { contentBottom, drawFooter, drawLetterhead, type Box } from "./page";
 import { SIGNATURE_PNG_BASE64 } from "./signature-base64";
@@ -50,9 +50,40 @@ type ScoreRow = { name: string; ca: number | null; exam: number | null; total: n
 /** Subject-by-subject marks with grade and remark. Returns the y below the table. */
 function drawScores(doc: PDFKit.PDFDocument, startY: number, sheet: ReportSheet, rows: ScoreRow[]): number {
   const headers = ["Subject", `CA (${sheet.caMax})`, `EXAM (${sheet.examMax})`, "Total", "Grade", "Remark"];
-  const subjectWidth = BOX.width * 0.3;
-  const otherWidth = (BOX.width - subjectWidth) / 5;
-  const widths = [subjectWidth, ...Array<number>(5).fill(otherWidth)];
+  return drawSubjectGrid(
+    doc,
+    startY,
+    headers,
+    0.3,
+    rows.map((row) => {
+      const grade = gradeFor(row.percent);
+      return [
+        row.name,
+        row.ca === null ? BLANK : mark(row.ca),
+        row.exam === null ? BLANK : mark(row.exam),
+        mark(row.total),
+        grade.grade,
+        grade.remark,
+      ];
+    })
+  );
+}
+
+/**
+ * A table with a subject column (`subjectShare` of the width) and equal
+ * columns after it, starting again under its header on a new page when it
+ * runs over. Returns the y below it.
+ */
+function drawSubjectGrid(
+  doc: PDFKit.PDFDocument,
+  startY: number,
+  headers: string[],
+  subjectShare: number,
+  rows: string[][]
+): number {
+  const subjectWidth = BOX.width * subjectShare;
+  const otherWidth = (BOX.width - subjectWidth) / (headers.length - 1);
+  const widths = [subjectWidth, ...Array<number>(headers.length - 1).fill(otherWidth)];
   const headerHeight = 18;
   const rowHeight = 15.5;
 
@@ -82,20 +113,7 @@ function drawScores(doc: PDFKit.PDFDocument, startY: number, sheet: ReportSheet,
       doc.addPage();
       y = drawHeaderRow(REPORT_MARGIN);
     }
-    const grade = gradeFor(row.percent);
-    drawRow(
-      y,
-      rowHeight,
-      [
-        row.name,
-        row.ca === null ? BLANK : mark(row.ca),
-        row.exam === null ? BLANK : mark(row.exam),
-        mark(row.total),
-        grade.grade,
-        grade.remark,
-      ],
-      false
-    );
+    drawRow(y, rowHeight, row, false);
     y += rowHeight;
   }
   return y;
@@ -117,6 +135,27 @@ function drawGradeKey(doc: PDFKit.PDFDocument, y: number): number {
     x += doc.widthOfString(part.text);
   }
   return y + 12;
+}
+
+/** "Male", "Female", or a dash when not recorded. */
+const genderLabel = (student: Pick<Student, "gender">): string =>
+  student.gender ? student.gender[0].toUpperCase() + student.gender.slice(1) : BLANK;
+
+/**
+ * A term's marks as its report sheet counts them: every subject on the
+ * sheet, a mark not entered counting as 0, out of CA + exam each; and the
+ * term's overall percentage. The session report counts terms the same way,
+ * so the two always agree.
+ */
+function termMarks(sheet: ReportSheet): { rows: ScoreRow[]; obtained: number; obtainable: number; overall: number } {
+  const outOf = sheet.caMax + sheet.examMax;
+  const rows: ScoreRow[] = sheet.subjects.map((s) => {
+    const total = (s.ca ?? 0) + (s.exam ?? 0);
+    return { ...s, total, percent: (total / outOf) * 100 };
+  });
+  const obtained = rows.reduce((sum, r) => sum + r.total, 0);
+  const obtainable = rows.length * outOf;
+  return { rows, obtained, obtainable, overall: obtainable ? (obtained / obtainable) * 100 : 0 };
 }
 
 const SIGNATURE = SIGNATURE_PNG_BASE64 ? `data:image/png;base64,${SIGNATURE_PNG_BASE64}` : null;
@@ -186,11 +225,14 @@ function drawComment(
   return y + height;
 }
 
+/** A subject's bar on the chart: its percentage. */
+type ChartBar = { name: string; percent: number };
+
 const CHART_LABELS = 60; // room under the plot for the slanted subject names
 const CHART_PLOT = { ideal: 90, least: 55 };
 
 /** One bar per subject, as a percentage, so the strong and weak ones stand out. */
-function drawChart(doc: PDFKit.PDFDocument, top: number, plotHeight: number, rows: ScoreRow[]): void {
+function drawChart(doc: PDFKit.PDFDocument, top: number, plotHeight: number, rows: ChartBar[]): void {
   const axisWidth = 22;
   const plotLeft = BOX.left + axisWidth;
   const plotWidth = BOX.width - axisWidth;
@@ -229,14 +271,7 @@ export function drawReportSheet(
   student: Pick<Student, "fullName" | "gender">,
   sheet: ReportSheet
 ): void {
-  const obtainablePerSubject = sheet.caMax + sheet.examMax;
-  const rows: ScoreRow[] = sheet.subjects.map((s) => {
-    const total = (s.ca ?? 0) + (s.exam ?? 0);
-    return { ...s, total, percent: (total / obtainablePerSubject) * 100 };
-  });
-  const obtained = rows.reduce((sum, r) => sum + r.total, 0);
-  const obtainable = rows.length * obtainablePerSubject;
-  const overall = (obtained / obtainable) * 100;
+  const { rows, obtained, obtainable, overall } = termMarks(sheet);
   const attendance = sheet.attendance;
 
   let y = drawLetterhead(doc, BOX, `${sheet.sessionName} ${sheet.termName} Report Sheet`);
@@ -244,7 +279,7 @@ export function drawReportSheet(
   y = drawFacts(doc, y, [
     [
       ["Student's Name", student.fullName],
-      ["Gender", student.gender ? student.gender[0].toUpperCase() + student.gender.slice(1) : BLANK],
+      ["Gender", genderLabel(student)],
       ["Class", sheet.classLabel ?? BLANK],
     ],
     [
@@ -273,6 +308,13 @@ export function drawReportSheet(
   if (teacherComment) y = drawComment(doc, y + 8, "Teacher Comment", teacherComment, signedBy);
   y = drawComment(doc, y + 8, "Principal's Comments", principalComment(overall, sheet.termName), BRAND.principalName, SIGNATURE);
 
+  drawChartBelow(doc, y, rows);
+  drawFooter(doc, BOX);
+}
+
+/** The chart under what's drawn so far: shrunk to fit, or on a page of its own when there's no room at all. */
+function drawChartBelow(doc: PDFKit.PDFDocument, y: number, bars: ChartBar[]): void {
+  if (bars.length === 0) return;
   y += 18;
   let plotHeight = Math.min(CHART_PLOT.ideal, contentBottom(doc) - y - CHART_LABELS);
   if (plotHeight < CHART_PLOT.least) {
@@ -281,6 +323,144 @@ export function drawReportSheet(
     y = REPORT_MARGIN + 8;
     plotHeight = CHART_PLOT.ideal;
   }
-  drawChart(doc, y, plotHeight, rows);
+  drawChart(doc, y, plotHeight, bars);
+}
+
+/** "1st", "2nd", "3rd": for the session report's column headings. */
+const TERM_ORDINAL: Record<Term["name"], string> = { "First Term": "1st", "Second Term": "2nd", "Third Term": "3rd" };
+
+/** "First, Second and Third Term". */
+function termsList(names: Term["name"][]): string {
+  const words = names.map((n) => n.split(" ")[0]);
+  return `${words.length > 1 ? `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}` : words[0]} Term`;
+}
+
+/** One subject's mark for one term of the session, as that term's sheet counts it. */
+type TermMark = { total: number; outOf: number };
+
+/**
+ * Draws a student's report for a whole session on the current page, from
+ * that session's term report sheets (one, two or all three terms):
+ *
+ *  - each subject's mark for each term (counted as on that term's sheet),
+ *    its total for the session, its session average (marks obtained over
+ *    marks obtainable across its terms) and that average's grade and remark;
+ *  - the session average the same way over every subject, the class's
+ *    average and size, the year's attendance added up (saying so when a
+ *    term has none recorded), and the latest term's next resumption date;
+ *  - the latest term's class teacher comment and principal's comment, the
+ *    principal's exactly as on that term's own sheet, so the two agree on
+ *    promotion once the Third Term is in;
+ *  - a chart of the subjects' session averages.
+ *
+ * A subject not on a term's sheet shows "-" for that term and doesn't count
+ * towards it. No class positions, as on the term sheets.
+ */
+export function drawSessionReport(
+  doc: PDFKit.PDFDocument,
+  student: Pick<Student, "fullName" | "gender">,
+  sheets: ReportSheet[]
+): void {
+  const terms = TERMS_IN_ORDER.flatMap((name) => sheets.filter((s) => s.termName === name).slice(0, 1));
+  const latest = terms[terms.length - 1];
+
+  // Subjects in the latest term's report order, then any taken only earlier.
+  const subjectNames: string[] = [];
+  for (const sheet of [...terms].reverse()) {
+    for (const s of sheet.subjects) if (!subjectNames.includes(s.name)) subjectNames.push(s.name);
+  }
+
+  const subjectRows = subjectNames.map((name) => {
+    const byTerm: (TermMark | null)[] = TERMS_IN_ORDER.map((termName) => {
+      const sheet = terms.find((t) => t.termName === termName);
+      const row = sheet && termMarks(sheet).rows.find((r) => r.name === name);
+      return sheet && row ? { total: row.total, outOf: sheet.caMax + sheet.examMax } : null;
+    });
+    const taken = byTerm.filter((m): m is TermMark => m !== null);
+    const total = taken.reduce((sum, m) => sum + m.total, 0);
+    const outOf = taken.reduce((sum, m) => sum + m.outOf, 0);
+    return { name, byTerm, total, outOf, percent: outOf ? (total / outOf) * 100 : 0 };
+  });
+
+  const obtained = subjectRows.reduce((sum, r) => sum + r.total, 0);
+  const obtainable = subjectRows.reduce((sum, r) => sum + r.outOf, 0);
+  const overall = obtainable ? (obtained / obtainable) * 100 : 0;
+  const classAverages = terms.map((t) => t.classAverage).filter((a): a is number => a !== null);
+  const classAverage = classAverages.length ? classAverages.reduce((a, b) => a + b, 0) / classAverages.length : null;
+
+  const attendanceRecords = terms.map((t) => t.attendance).filter((a): a is NonNullable<ReportSheet["attendance"]> => a !== null);
+  const opened = attendanceRecords.reduce((sum, a) => sum + a.totalDays, 0);
+  const present = attendanceRecords.reduce((sum, a) => sum + a.daysPresent, 0);
+  // "175 (2 of 3 terms)" when a term has no attendance recorded, so it doesn't read as the whole year.
+  const ofTerms = attendanceRecords.length < terms.length ? ` (${attendanceRecords.length} of ${terms.length} terms)` : "";
+  const days = (n: number, note = "") => (attendanceRecords.length ? `${n}${note}` : BLANK);
+
+  let y = drawLetterhead(doc, BOX, `${latest.sessionName} Session Report`);
+
+  y = drawFacts(doc, y, [
+    [
+      ["Student's Name", student.fullName],
+      ["Gender", genderLabel(student)],
+      ["Class", latest.classLabel ?? BLANK],
+    ],
+    [
+      ["Session", latest.sessionName],
+      ["Terms", termsList(terms.map((t) => t.termName))],
+      ["Number of subjects", String(subjectRows.length)],
+    ],
+    [
+      ["Number of students in class", latest.studentsInClass === null ? BLANK : String(latest.studentsInClass)],
+      ["Class Average Score", classAverage === null ? BLANK : classAverage.toFixed(2)],
+      ["Session Average", overall.toFixed(2)],
+    ],
+    [
+      ["No of times School opened", days(opened, ofTerms)],
+      ["Times Present", days(present)],
+      ["Times Absent", days(Math.max(0, opened - present))],
+    ],
+    [
+      ["Total Marks Obtainable", mark(obtainable)],
+      ["Total Marks Obtained", mark(obtained)],
+      ["Next Resumption Date", latest.nextTermBegins ? shortDate(latest.nextTermBegins) : BLANK],
+    ],
+  ]);
+
+  // "1st Term"; a term marked out of other than 100 says so ("1st (/60)"), in a width that fits.
+  const termHeader = (name: Term["name"]) => {
+    const sheet = terms.find((t) => t.termName === name);
+    const outOf = sheet ? sheet.caMax + sheet.examMax : 100;
+    return outOf === 100 ? `${TERM_ORDINAL[name]} Term` : `${TERM_ORDINAL[name]} (/${outOf})`;
+  };
+  y = drawSubjectGrid(
+    doc,
+    y + 8,
+    ["Subject", ...TERMS_IN_ORDER.map(termHeader), "Total", "Average", "Grade", "Remark"],
+    0.24,
+    subjectRows.map((r) => {
+      const grade = gradeFor(r.percent);
+      return [
+        r.name,
+        ...r.byTerm.map((m) => (m ? mark(m.total) : BLANK)),
+        mark(r.total),
+        r.percent.toFixed(2),
+        grade.grade,
+        grade.remark,
+      ];
+    })
+  );
+  y = drawGradeKey(doc, y + 9);
+
+  const { teacherComment, signedBy } = latest.report;
+  if (teacherComment) y = drawComment(doc, y + 8, `Teacher Comment (${latest.termName})`, teacherComment, signedBy);
+  y = drawComment(
+    doc,
+    y + 8,
+    `Principal's Comments (${latest.termName})`,
+    principalComment(termMarks(latest).overall, latest.termName),
+    BRAND.principalName,
+    SIGNATURE
+  );
+
+  drawChartBelow(doc, y, subjectRows);
   drawFooter(doc, BOX);
 }

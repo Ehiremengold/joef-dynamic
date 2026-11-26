@@ -1,15 +1,13 @@
 import "server-only";
 import { serviceClient } from "@/lib/supabase/server";
-import { LEVEL_NAMES, type ClassName, type ReportSheet, type Term } from "@/lib/types";
+import { LEVEL_NAMES, TERMS_IN_ORDER, type ClassName, type ReportSheet, type Term } from "@/lib/types";
 import { mapTermReport, TERM_REPORT_SELECT } from "./termReports";
 
 type Row = Record<string, unknown>;
 
-const TERMS_IN_ORDER: Term["name"][] = ["First Term", "Second Term", "Third Term"];
-
 const SCORE_SELECT =
   "ca_score, exam_score, ca_max, exam_max, term_id, class_id, subject_id, subjects(name), " +
-  "terms(name, next_term_begins, academic_sessions(name)), classes(level, arm, campuses(name))";
+  "terms(name, next_term_begins, session_id, academic_sessions(name)), classes(level, arm, campuses(name))";
 
 /** "Basic 1 (Ikoyi)", "JSS 2A (Obalende)", "Nursery 2 Silver (Obalende)". */
 function classLabel(cls: Row): string {
@@ -95,6 +93,8 @@ export async function listReportSheets(studentId: string): Promise<ReportSheet[]
         .map(({ name, ca, exam }) => ({ name, ca, exam }));
 
       const sheet: ReportSheet = {
+        termId,
+        sessionId: term.session_id as string,
         sessionName: (term.academic_sessions as Row).name as string,
         termName: term.name as Term["name"],
         classLabel: first.classes ? classLabel(first.classes as Row) : null,
